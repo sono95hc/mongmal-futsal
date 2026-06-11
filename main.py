@@ -131,7 +131,6 @@ if page == menu_1:
     if st.button("팀 짜기 시작", use_container_width=True, type="primary"):
         st.session_state.show_warning = True
 
-    # ?? [버그 박멸] st.warning 창 내부의 모든 이모티콘 전면 삭제
     if st.session_state.show_warning:
         st.warning("주의: 팀을 새로 짜면 현재 경기 기록실의 점수가 모두 초기화됩니다. 계속 진행하시겠습니까?")
         
@@ -180,13 +179,16 @@ if page == menu_1:
                 st.info("팀 짜기가 취소되었습니다. 기존 경기 기록은 무사합니다.")
                 st.rerun()
 
-    # ?? [버그 박멸] st.success 및 st.text_area 레이블의 모든 이모티콘 전면 삭제
     if st.session_state.current_teams and not st.session_state.show_warning:
         st.success("매칭 완료")
         
         katalk_text = f"[풋살 팀 매칭 결과 ({st.session_state.match_mode})]\n"
         for t_name, members in st.session_state.current_teams.items():
             m_names = [p['name'] for p in members]
+            
+            # ?? [역대급 디테일 개조] 황금밸런스로 팀은 완벽히 짜여졌으나, 출력하기 직전에 이름만 시각적으로 마구 섞어줍니다!
+            random.shuffle(m_names) 
+            
             katalk_text += f"\n{t_name}팀 ({len(members)}명)\n{', '.join(m_names)}\n"
             
         st.text_area("꾹 눌러서 복사 후 카톡 공지", value=katalk_text, height=140)
