@@ -5,7 +5,7 @@ import pandas as pd
 # 스마트폰 화면 및 브라우저 타이틀 설정
 st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="centered")
 
-# --- ?? [핵심] 여러 페이지 간 데이터를 공유하기 위한 저장소 세팅 ---
+# --- 여러 페이지 간 데이터 공유를 위한 저장소 세팅 ---
 if "current_teams" not in st.session_state:
     st.session_state.current_teams = {}
 if "edited_df" not in st.session_state:
@@ -23,15 +23,19 @@ if "edited_score_df" not in st.session_state:
     score_data = {"블루 점수": [0] * 9, "블랙 점수": [0] * 9, "레드 점수": [0] * 9}
     st.session_state.edited_score_df = pd.DataFrame(score_data, index=quarters)
 
-# --- ?? 스마트폰 사이드바/상단 메뉴 분리 ---
+# --- 스마트폰 메뉴 분리 (오타 발생 가능성 차단을 위해 변수화) ---
+menu_1 = "▶ 1. 선수 명단 & 팀배분"
+menu_2 = "▶ 2. 실시간 9쿼터 기록실"
+
 st.sidebar.title("MENU")
-page = st.sidebar.radio("원하시는 기능을 선택하세요", ["▶ 1. 선수 명단 & 팀배분", "▶ 2. 실시간 9쿼터 기록실"])
+page = st.sidebar.radio("원하시는 기능을 선택하세요", [menu_1, menu_2])
 st.sidebar.caption("제작자: by홍찬")
 
 # =========================================================================
 # ?? 1페이지: 선수 명단 및 팀 배분 기능
 # =========================================================================
-if page == "▶ 1. 선수 명단 & Team 배분":
+# ?? [수정 완료] 이 부분의 조건문 텍스트를 상단 메뉴와 완벽하게 일치시켰습니다!
+if page == menu_1:
     st.title("몽말 팀배분 프로그램")
     st.write("진짜 엑셀처럼 칸을 누르고 이름과 점수(1~5)를 입력하세요. (최대 18명)")
     
@@ -135,8 +139,8 @@ else:
             history[tm1]["무"] += 1; history[tm1]["승점"] += 1
             history[tm2]["무"] += 1; history[tm2]["승점"] += 1
 
-    for t in history:
-        history[t]["골득실"] = history[t]["득점"] - history[t]["실점"]
+for t in history:
+    history[t]["골득실"] = history[t]["득점"] - history[t]["실점"]
 
     # 실시간 순위 테이블 출력
     st.subheader("★ 오늘 경기 실시간 순위표")
