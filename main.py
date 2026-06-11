@@ -75,27 +75,27 @@ if "initialized" not in st.session_state:
     st.session_state.current_teams = {}
     st.session_state.initialized = True
 
-# --- ?? [수정] 3페이지 대량 입력용 표 초기화 (소수점 기본 입력을 위해 3.0 세팅) ---
+# 3페이지 대량 입력용 표 초기화
 if "bulk_input_df" not in st.session_state:
     st.session_state.bulk_input_df = pd.DataFrame({
-        "이름": [""] * 30,
-        "공격": [3.0] * 30,
-        "수비": [3.0] * 30,
-        "키퍼": [3.0] * 30
+        "이름": [""] * 15,
+        "공격": [3.0] * 15,
+        "수비": [3.0] * 15,
+        "키퍼": [3.0] * 15
     })
 
-# --- 상태 보존용 세션 플래그 생성 ---
+# 상태 보존용 세션 플래그 생성
 if "show_warning" not in st.session_state:
     st.session_state.show_warning = False
 
-# --- 스마트폰 메뉴 구조 정의 ---
+# 스마트폰 메뉴 구조 정의
 menu_1 = "1. 명단 및 팀배분"
 menu_2 = "2. 경기 기록실"
 menu_3 = "3. 회원별 점수"
 
 st.sidebar.title("MENU")
 
-# --- 관리자 인증 시스템 ---
+# 관리자 인증 시스템
 st.sidebar.markdown("---")
 st.sidebar.subheader("관리자 인증")
 admin_password = st.sidebar.text_input("비밀번호 입력", type="password")
@@ -145,7 +145,6 @@ if page == menu_1:
                     if cleaned_name and cleaned_name != "None" and cleaned_name != "":
                         if cleaned_name in st.session_state.MEMBER_DATABASE:
                             db_info = st.session_state.MEMBER_DATABASE[cleaned_name]
-                            # ?? [수정] 소수점 점수 합산 연산 반영
                             total_score = float(db_info["공격"]) + float(db_info["수비"])
                         else:
                             total_score = 6.0
@@ -273,24 +272,22 @@ elif page == menu_2:
             st.rerun()
 
 # =========================================================================
-# ? 3페이지: 회원별 점수 관리실 (?? 소수점 둘째 자리 지원 개조)
+# ? 3페이지: 회원별 점수 관리실 (★ 수정/삭제 기능 완벽 통합)
 # =========================================================================
 else:
     st.title("3. 회원별 점수 관리실")
-    st.write("엑셀 장부의 데이터를 [이름, 공격, 수비, 키퍼] 순서대로 복사해서 아래 표 첫 칸에 붙여넣기 하세요.")
-    st.caption("?? 소수점 둘째 자리(예: 3.5, 4.25)까지 정교하게 복붙 및 입력이 가능합니다.")
     
-    # ?? [소수점 대응 설정] 데이터 타입 강제 변환 및 출력 포맷 지정
+    # 윗부분: 신규 등록 구역
+    st.subheader("?? 신규 회원 대량 복붙 / 등록")
+    st.write("엑셀 데이터를 [이름, 공격, 수비, 키퍼] 순서대로 복사해서 아래 표 첫 칸에 붙여넣기 하세요.")
+    
     bulk_input_processed = st.session_state.bulk_input_df.copy()
     bulk_input_processed["공격"] = bulk_input_processed["공격"].astype(float)
     bulk_input_processed["수비"] = bulk_input_processed["수비"].astype(float)
     bulk_input_processed["키퍼"] = bulk_input_processed["키퍼"].astype(float)
 
     grid_bulk = st.data_editor(
-        bulk_input_processed, 
-        num_rows="fixed", 
-        use_container_width=True, 
-        hide_index=True,
+        bulk_input_processed, num_rows="fixed", use_container_width=True, hide_index=True,
         column_config={
             "공격": st.column_config.NumberColumn(format="%.2f"),
             "수비": st.column_config.NumberColumn(format="%.2f"),
@@ -299,29 +296,32 @@ else:
     )
     st.session_state.bulk_input_df = grid_bulk
 
-    # 일괄 저장 버튼
-    if st.button("도감에 일괄 저장하기", use_container_width=True, type="primary"):
+    if st.button("도감에 신규 데이터 일괄 저장하기", use_container_width=True, type="primary"):
         saved_count = 0
         for _, row in grid_bulk.iterrows():
             name = str(row["이름"]).strip()
             if name and name != "None" and name != "":
-                # ?? [소수점 저장] 데이터를 실수(float) 형태로 정밀 저장
                 st.session_state.MEMBER_DATABASE[name] = {
-                    "공격": round(float(row["공격"]), 2),
-                    "수비": round(float(row["수비"]), 2),
-                    "키퍼": round(float(row["키퍼"]), 2)
+                    "공격": round(float(row["공격"]), 2), "수비": round(float(row["수비"]), 2), "키퍼": round(float(row["키퍼"]), 2)
                 }
                 saved_count += 1
-        
         if saved_count > 0:
             save_permanent_data()
-            st.success(f"성공! 총 {saved_count}명의 정밀 실력 데이터가 비공개 도감에 일괄 등록되었습니다.")
+            # 입력창 비우기용 초기화
+            st.session_state.bulk_input_df = pd.DataFrame({"이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15})
+            st.success(f"성공! 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
             st.rerun()
         else:
-            st.error("표에 입력된 이름이 없습니다.")
+            st.error("입력된 이름이 없습니다.")
             
     st.markdown("---")
-    st.subheader("현재 등록된 전체 회원별 점수 도감")
+    
+    # 아랫부분: 장부 수정 및 삭제 관리 구역
+    st.subheader("?? 등록된 도감 수정 및 삭제실")
+    st.write("아래 표에서 데이터를 **직접 수정**하거나, 행 왼쪽을 누르고 키보드 **Delete 키를 눌러 삭제**할 수 있습니다.")
+    st.caption("?? 작업 후 아래의 [변경사항 도감에 최종 저장하기] 버튼을 눌러야 장부에 영구 반영됩니다.")
+    
+    # 현재 저장되어 있는 마스터 데이터를 표용 데이터프레임으로 변환
     db_list = []
     for name, stats in st.session_state.MEMBER_DATABASE.items():
         db_list.append({
@@ -330,4 +330,34 @@ else:
             "수비점수": round(float(stats["수비"]), 2), 
             "키퍼점수": round(float(stats["키퍼"]), 2)
         })
-    st.dataframe(pd.DataFrame(db_list), use_container_width=True, hide_index=True)
+    df_db = pd.DataFrame(db_list)
+    
+    if df_db.empty:
+        st.info("현재 도감에 등록된 회원이 없습니다.")
+    else:
+        # ?? [핵심 변형] num_rows="dynamic"을 주어 행 삭제(Delete) 및 셀 수정을 지원하는 마스터 에디터 배치!
+        grid_master = st.data_editor(
+            df_db, num_rows="dynamic", use_container_width=True, hide_index=True,
+            column_config={
+                "이름": st.column_config.TextColumn(required=True),
+                "공격점수": st.column_config.NumberColumn(format="%.2f"),
+                "수비점수": st.column_config.NumberColumn(format="%.2f"),
+                "키퍼점수": st.column_config.NumberColumn(format="%.2f"),
+            }
+        )
+        
+        # 표에 실시간 변화가 생겼다면 최종 저장 버튼 활성화
+        if st.button("변경사항 도감에 최종 저장하기", use_container_width=True):
+            new_database = {}
+            for _, row in grid_master.iterrows():
+                name = str(row["이름"]).strip()
+                if name and name != "None" and name != "":
+                    new_database[name] = {
+                        "공격": round(float(row["공격점수"]), 2),
+                        "수비": round(float(row["수비점수"]), 2),
+                        "키퍼": round(float(row["키퍼점수"]), 2)
+                    }
+            st.session_state.MEMBER_DATABASE = new_database
+            save_permanent_data()
+            st.success("도감의 수정/삭제 변경사항이 장부에 영구 저장되었습니다!")
+            st.rerun()
