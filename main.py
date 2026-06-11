@@ -25,7 +25,6 @@ def load_permanent_data():
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # 데이터 포맷 복원 및 검증
                 if "MEMBER_DATABASE" not in data:
                     data["MEMBER_DATABASE"] = {
                         "손흥민": {"공격": 5, "수비": 4, "키퍼": 2},
@@ -38,7 +37,6 @@ def load_permanent_data():
         except:
             pass
     
-    # 파일이 없거나 오류 시 디폴트 값 리턴
     return {
         "MEMBER_DATABASE": {
             "손흥민": {"공격": 5, "수비": 4, "키퍼": 2},
@@ -54,7 +52,6 @@ def load_permanent_data():
 
 # 2. 파일에 데이터 영구 저장하기 함수
 def save_permanent_data():
-    # 저장할 딕셔너리 빌드
     score_dict = st.session_state.edited_score_df.to_dict(orient="list")
     data_to_save = {
         "MEMBER_DATABASE": st.session_state.MEMBER_DATABASE,
@@ -72,12 +69,15 @@ if "initialized" not in st.session_state:
     st.session_state.attendance_list = perm_data["attendance_list"]
     st.session_state.match_mode = perm_data["match_mode"]
     
-    # 쿼터 스코어 복원
     mode = perm_data["match_mode"]
-    quarters = [f"{i}쿼터" for i in range(1, 9 if mode == "2파전" else 10)]
+    quarters = [f"{i}쿼터" for i in range(1, 8 if mode == "2파전" else 10)]
     st.session_state.edited_score_df = pd.DataFrame(perm_data["score_data_dict"], index=quarters)
     st.session_state.current_teams = {}
     st.session_state.initialized = True
+
+# --- 상태 보존용 세션 플래그 생성 ---
+if "show_warning" not in st.session_state:
+    st.session_state.show_warning = False
 
 # --- 스마트폰 메뉴 구조 정의 ---
 menu_1 = "1. 명단 및 팀배분"
@@ -86,11 +86,11 @@ menu_3 = "3. 회원별 점수"
 
 st.sidebar.title("MENU")
 
-# --- ?? 관리자 인증 시스템 ---
+# --- 관리자 인증 시스템 ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("관리자 인증")
 admin_password = st.sidebar.text_input("비밀번호 입력", type="password")
-is_admin = (admin_password == "1234")  # ?? 총무 전용 패스워드
+is_admin = (admin_password == "1234")
 
 if is_admin:
     menu_options = [menu_1, menu_2, menu_3]
@@ -111,7 +111,6 @@ if page == menu_1:
     df_attendance = pd.DataFrame({"이름": st.session_state.attendance_list})
     grid_result = st.data_editor(df_attendance, num_rows="fixed", use_container_width=True, hide_index=True)
     
-    # 이름이 바뀌면 영구 장부에 즉시 실시간 세이브
     if grid_result["이름"].tolist() != st.session_state.attendance_list:
         st.session_state.attendance_list = grid_result["이름"].tolist()
         save_permanent_data()
@@ -120,46 +119,64 @@ if page == menu_1:
     st.subheader("경기 방식 설정")
     selected_mode = st.radio("오늘 매치 방식을 골라주세요", ["2파전 (8쿼터)", "3파전 (9쿼터)"], index=0 if st.session_state.match_mode == "2파전" else 1)
 
+    # ?? [안전장치 1단계] 팀 짜기 시작 버튼을 누르면 먼저 경고 플래그를 켭니다.
     if st.button("팀 짜기 시작", use_container_width=True, type="primary"):
-        players = []
-        for name in st.session_state.attendance_list:
-            cleaned_name = str(name).strip()
-            if cleaned_name and cleaned_name != "None" and cleaned_name != "":
-                if cleaned_name in st.session_state.MEMBER_DATABASE:
-                    db_info = st.session_state.MEMBER_DATABASE[cleaned_name]
-                    total_score = int(db_info["공격"]) + int(db_info["수비"])
-                else:
-                    total_score = 6
-                players.append({"name": cleaned_name, "total": total_score})
-                
-        total_players = len(players)
-        if total_players < 2:
-            st.error("선수를 입력해 주세요.")
-        else:
-            players.sort(key=lambda x: x['total'], reverse=True)
-            
-            # 모드가 바뀌면 스코어보드 형식을 파일에 새로 저장
-            old_mode = st.session_state.match_mode
-            new_mode = "2파전" if "2파전" in selected_mode else "3파전"
-            
-            st.session_state.match_mode = new_mode
-            st.session_state.current_teams = {name: [] for name in (["레드", "블루"] if new_mode == "2파전" else ["블랙", "레드", "블루"])}
-            
-            if new_mode == "2파전":
-                for idx, p in enumerate(players):
-                    st.session_state.current_teams["레드" if idx % 2 == 0 else "블루"].append(p)
-            else:
-                order = [0, 1, 2]
-                for idx, p in enumerate(players):
-                    if idx % 3 == 0 and idx > 0: random.shuffle(order)
-                    st.session_state.current_teams[(["블랙", "레드", "블루"])[order[idx % 3]]].append(p)
-            
-            if old_mode != new_mode or "score_reset" not in st.session_state:
-                st.session_state.edited_score_df = get_blank_score_df(new_mode)
-            
-            save_permanent_data() # 모드 변동 정보 최종 저장
+        st.session_state.show_warning = True
 
-    if st.session_state.current_teams:
+    # ?? [안전장치 2단계] 경고 플래그가 켜졌을 때만 작동하는 확인 폼
+    if st.session_state.show_warning:
+        st.warning("?? 주의: 팀을 새로 짜면 현재 경기 기록실의 점수가 모두 초기화됩니다. 계속 진행하시겠습니까?")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            # 최종 승인 버튼
+            if st.button("네, 새로 짭니다", use_container_width=True, type="secondary"):
+                st.session_state.show_warning = False # 플래그 해제
+                
+                players = []
+                for name in st.session_state.attendance_list:
+                    cleaned_name = str(name).strip()
+                    if cleaned_name and cleaned_name != "None" and cleaned_name != "":
+                        if cleaned_name in st.session_state.MEMBER_DATABASE:
+                            db_info = st.session_state.MEMBER_DATABASE[cleaned_name]
+                            total_score = int(db_info["공격"]) + int(db_info["수비"])
+                        else:
+                            total_score = 6
+                        players.append({"name": cleaned_name, "total": total_score})
+                        
+                total_players = len(players)
+                if total_players < 2:
+                    st.error("선수를 입력해 주세요.")
+                else:
+                    players.sort(key=lambda x: x['total'], reverse=True)
+                    
+                    new_mode = "2파전" if "2파전" in selected_mode else "3파전"
+                    st.session_state.match_mode = new_mode
+                    st.session_state.current_teams = {name: [] for name in (["레드", "블루"] if new_mode == "2파전" else ["블랙", "레드", "블루"])}
+                    
+                    if new_mode == "2파전":
+                        for idx, p in enumerate(players):
+                            st.session_state.current_teams["레드" if idx % 2 == 0 else "블루"].append(p)
+                    else:
+                        order = [0, 1, 2]
+                        for idx, p in enumerate(players):
+                            if idx % 3 == 0 and idx > 0: random.shuffle(order)
+                            st.session_state.current_teams[(["블랙", "레드", "블루"])[order[idx % 3]]].append(p)
+                    
+                    # ?? 확정 시 스코어보드를 완전히 새로 리셋합니다.
+                    st.session_state.edited_score_df = get_blank_score_df(new_mode)
+                    save_permanent_data()
+                    st.rerun()
+                    
+        with col2:
+            # 취소 버튼
+            if st.button("아니오, 취소합니다", use_container_width=True):
+                st.session_state.show_warning = False
+                st.info("팀 짜기가 취소되었습니다. 기존 경기 기록은 무사합니다.")
+                st.rerun()
+
+    # 팀 짜기 최종 결과 출력 구역
+    if st.session_state.current_teams and not st.session_state.show_warning:
         st.success(f"매칭 완료")
         katalk_text = f"[풋살 팀 매칭 결과 ({st.session_state.match_mode})]\n"
         for t_name, members in st.session_state.current_teams.items():
@@ -174,10 +191,8 @@ elif page == menu_2:
     st.title(f"실시간 경기 기록실 ({st.session_state.match_mode})")
     st.write("각 쿼터별 스코어를 입력하세요. 점수를 적은 뒤 엔터를 치거나 다른 셀을 누르면 자동 실시간 저장됩니다.")
     
-    # 스코어 수정 창 띄우기
     grid_score = st.data_editor(st.session_state.edited_score_df, use_container_width=True)
     
-    # ?? [핵심] 사용자가 스코어 칸 숫자를 바꿀 때마다 파일 장부에 실시간 영구 자동 세이브!!
     if not grid_score.equals(st.session_state.edited_score_df):
         st.session_state.edited_score_df = grid_score
         save_permanent_data()
@@ -199,7 +214,7 @@ elif page == menu_2:
             if blue_score == 0 and red_score == 0: continue
         else:
             if i % 3 == 0:
-                t_pairs = ["레드", "블루"]; scores = [int(red_score), int(blue_score)]
+                t_pairs = ["레드", "ブル"]; scores = [int(red_score), int(blue_score)]
                 if black_score > 0 and red_score == 0: t_pairs = ["블랙", "블루"]; scores = [int(black_score), int(blue_score)]
                 elif black_score > 0 and blue_score == 0: t_pairs = ["블랙", "레드"]; scores = [int(black_score), int(red_score)]
             elif i % 3 == 1:
@@ -246,7 +261,6 @@ elif page == menu_2:
         })
     st.table(pd.DataFrame(final_display).set_index("순위"))
     
-    # ?? [보안 강화 및 관리 편의] 초기화 버튼은 총무님이 비밀번호를 쳤을 때만 화면에 노출되도록 제어
     if is_admin:
         st.markdown("---")
         if st.button("?? 오늘 경기 스코어판 전체 초기화 (데이터 리셋)", use_container_width=True):
@@ -271,7 +285,7 @@ else:
             st.error("이름을 입력해 주세요.")
         else:
             st.session_state.MEMBER_DATABASE[new_name] = {"공격": new_atk, "수비": new_dfd, "키퍼": new_gk}
-            save_permanent_data() # 도감 추가 즉시 파일 영구 저장
+            save_permanent_data()
             st.success(f"성공! [ {new_name} ] 선수의 실력 데이터가 비공개 저장소에 기록되었습니다.")
             st.rerun()
             
