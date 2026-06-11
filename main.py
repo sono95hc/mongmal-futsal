@@ -58,7 +58,6 @@ if page == menu_1:
 
         st.markdown("---")
         st.subheader("?? 경기 방식 설정")
-        # ?? [핵심 추가] 총무님이 직접 2파전/3파전을 고를 수 있는 라디오 버튼 배치!
         selected_mode = st.radio("오늘 매치 방식을 골라주세요", ["2파전 (레드 vs 블루 / 8쿼터)", "3파전 (블랙 vs 레드 vs 블루 / 9쿼터)"])
 
         # 2. 팀 짜기 버튼
@@ -75,17 +74,14 @@ if page == menu_1:
             else:
                 players.sort(key=lambda x: x['total'], reverse=True)
                 
-                # 총무님이 선택한 모드 값 주입
                 if "2파전" in selected_mode:
                     st.session_state.match_mode = "2파전"
                     team_names = ["레드", "블루"]
                     st.session_state.current_teams = {name: [] for name in team_names}
                     
-                    # 2파전 지그재그 분배
                     for idx, p in enumerate(players):
                         st.session_state.current_teams["레드" if idx % 2 == 0 else "블루"].append(p)
                     
-                    # 2파전용 8쿼터 기록실 판 새로 짜기
                     quarters_2p = [f"{i}쿼터" for i in range(1, 9)]
                     score_data_2p = {"블루 점수": [0] * 8, "레드 점수": [0] * 8}
                     st.session_state.edited_score_df = pd.DataFrame(score_data_2p, index=quarters_2p)
@@ -94,13 +90,11 @@ if page == menu_1:
                     team_names = ["블랙", "레드", "블루"]
                     st.session_state.current_teams = {name: [] for name in team_names}
                     
-                    # 3파전 밸런스 분배
                     order = [0, 1, 2]
                     for idx, p in enumerate(players):
                         if idx % 3 == 0 and idx > 0: random.shuffle(order)
                         st.session_state.current_teams[team_names[order[idx % 3]]].append(p)
                     
-                    # 3파전용 9쿼터 기록실 판 새로 짜기
                     quarters_3p = [f"{i}쿼터" for i in range(1, 10)]
                     score_data_3p = {"블루 점수": [0] * 9, "블랙 점수": [0] * 9, "레드 점수": [0] * 9}
                     st.session_state.edited_score_df = pd.DataFrame(score_data_3p, index=quarters_3p)
@@ -128,10 +122,8 @@ else:
         st.write("각 쿼터별 점수를 입력하세요. 쉬는 팀은 점수를 0으로 두면 됩니다.")
         history_keys = ["레드", "블랙", "블루"]
         
-    # 세션에서 2파전/3파전에 맞춰 동적으로 변형된 스코어 테이블 출력
     st.session_state.edited_score_df = st.data_editor(st.session_state.edited_score_df, use_container_width=True)
 
-    # 연산 엔진 가동
     history = {t: {"승": 0, "무": 0, "패": 0, "득점": 0, "실점": 0, "골득실": 0, "승점": 0, "경기수": 0} for t in history_keys}
     loop_count = 8 if st.session_state.match_mode == "2파전" else 9
 
@@ -196,12 +188,13 @@ else:
     for idx, row in sort_df.iterrows():
         t_name = row["팀"]
         stat = history[t_name]
+        # ?? [수정 완료] 문자 깨짐을 유발하던 여러 칸의 공백을 슬래시(/)와 깔끔한 한 칸 공백으로 대체했습니다.
         final_display.append({
             "순위": f"{idx+1}위",
             "팀": f"{t_name}팀",
-            "전적": f"{stat['승']}승  {stat['무']}무  {stat['패']}패",
+            "전적": f"{stat['승']}승 / {stat['무']}무 / {stat['패']}패",
             "총 승점": f"{stat['승점']}점",
-            "골득실": f"{stat['골득실']} (득{stat['득점']} / 실{stat['실점']})"
+            "골득실": f"{stat['골득실']} (득 {stat['득점']} / 실 {stat['실점']})"
         })
 
     st.table(pd.DataFrame(final_display).set_index("순위"))
