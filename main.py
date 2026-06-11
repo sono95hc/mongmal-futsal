@@ -189,7 +189,7 @@ if page == menu_1:
         st.text_area("꾹 눌러서 복사 후 카톡 공지", value=katalk_text, height=140)
 
 # =========================================================================
-# 2페이지: 경기 기록실 (★ 3파전 대진 매칭식으로 전면 개조)
+# 2페이지: 경기 기록실 (★ black -> 블랙 오타 전면 수정 완료)
 # =========================================================================
 elif page == menu_2:
     st.title(f"실시간 경기 기록실 ({st.session_state.match_mode})")
@@ -203,16 +203,14 @@ elif page == menu_2:
     selected_q = st.selectbox("기록할 쿼터 선택", quarter_options)
     current_q_data = st.session_state.edited_score_df.loc[selected_q]
     
-    # ?? [핵심 개조] 3파전일 때 이번 쿼터에 대결할 두 팀을 직접 고르게 만듭니다!
     if st.session_state.match_mode == "3파전":
-        # 현재 어떤 팀 조합이 붙었는지 판단해서 기본 라디오 인덱스 설정
         default_match_idx = 0
         if pd.notna(current_q_data["블루"]) and pd.notna(current_q_data["레드"]) and pd.isna(current_q_data["블랙"]):
-            default_match_idx = 0  # 블루 vs 레드
+            default_match_idx = 0
         elif pd.notna(current_q_data["블루"]) and pd.notna(current_q_data["블랙"]) and pd.isna(current_q_data["레드"]):
-            default_match_idx = 1  # 블루 vs 블랙
+            default_match_idx = 1
         elif pd.notna(current_q_data["블랙"]) and pd.notna(current_q_data["레드"]) and pd.isna(current_q_data["블루"]):
-            default_match_idx = 2  # 블랙 vs 레드
+            default_match_idx = 2
             
         match_type = st.radio("이번 쿼터 경기 대진", ["블루 vs 레드", "블루 vs 블랙", "블랙 vs 레드"], index=default_match_idx)
         
@@ -220,17 +218,18 @@ elif page == menu_2:
         if match_type == "블루 vs 레드":
             with c1: val_blue = st.number_input("블루 점수", min_value=0, max_value=99, value=int(current_q_data["블루"]) if pd.notna(current_q_data["블루"]) else 0, step=1)
             with c2: val_red = st.number_input("레드 점수", min_value=0, max_value=99, value=int(current_q_data["레드"]) if pd.notna(current_q_data["레드"]) else 0, step=1)
-            val_black = None  # 쉬는 팀은 확실하게 None 처리
+            val_black = None
         elif match_type == "블루 vs 블랙":
             with c1: val_blue = st.number_input("블루 점수", min_value=0, max_value=99, value=int(current_q_data["블루"]) if pd.notna(current_q_data["블루"]) else 0, step=1)
-            with c2: val_black = st.number_input("블랙 점수", min_value=0, max_value=99, value=int(current_q_data["블랙"]) if pd.notna(current_q_data["black"]) else 0, step=1)
+            # ?? [버그 수정 포인트] 아래 "black" 오타를 "블랙"으로 완벽히 교체했습니다.
+            with c2: val_black = st.number_input("블랙 점수", min_value=0, max_value=99, value=int(current_q_data["블랙"]) if pd.notna(current_q_data["블랙"]) else 0, step=1)
             val_red = None
         else:
             with c1: val_black = st.number_input("블랙 점수", min_value=0, max_value=99, value=int(current_q_data["블랙"]) if pd.notna(current_q_data["블랙"]) else 0, step=1)
             with c2: val_red = st.number_input("레드 점수", min_value=0, max_value=99, value=int(current_q_data["레드"]) if pd.notna(current_q_data["레드"]) else 0, step=1)
             val_blue = None
             
-    else:  # 2파전일 때
+    else:
         c1, c2 = st.columns(2)
         with c1: val_blue = st.number_input("블루 점수", min_value=0, max_value=99, value=int(current_q_data["블루"]) if pd.notna(current_q_data["블루"]) else 0, step=1)
         with c2: val_red = st.number_input("레드 점수", min_value=0, max_value=99, value=int(current_q_data["레드"]) if pd.notna(current_q_data["레드"]) else 0, step=1)
@@ -262,7 +261,6 @@ elif page == menu_2:
         r_val = st.session_state.edited_score_df.iloc[i]["레드"]
         bl_val = st.session_state.edited_score_df.iloc[i]["블랙"] if st.session_state.match_mode == "3파전" else None
         
-        # 3파전 대진 확인용 리스트 빌드
         valid_teams = []
         valid_scores = []
         
@@ -270,7 +268,6 @@ elif page == menu_2:
         if pd.notna(r_val): valid_teams.append("레드"); valid_scores.append(int(r_val))
         if bl_val is not None and pd.notna(bl_val): valid_teams.append("블랙"); valid_scores.append(int(bl_val))
         
-        # 실제 입력된 팀이 정확히 2팀일 때만 연산 가동! (쉬는 팀 배제 완료)
         if len(valid_teams) == 2:
             tm1, tm2 = valid_teams[0], valid_teams[1]
             sc1, sc2 = valid_scores[0], valid_scores[1]
