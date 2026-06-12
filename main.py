@@ -3,6 +3,7 @@ import random
 import pandas as pd
 import json
 import os
+from datetime import datetime
 
 # 스마트폰 화면 및 브라우저 타이틀 설정
 st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="centered")
@@ -10,7 +11,7 @@ st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="
 # --- [파일 영구 저장 엔진] 시스템 설정 ---
 DB_FILE = "futsal_data.json"
 
-# 초기 데이터 구조 정의 (빈칸으로 세팅)
+# 초기 데이터 구조 정의
 def get_blank_score_df(mode="3파전"):
     if mode == "2파전":
         quarters = [f"{i}쿼터" for i in range(1, 9)]
@@ -19,12 +20,14 @@ def get_blank_score_df(mode="3파전"):
         quarters = [f"{i}쿼터" for i in range(1, 10)]
         return pd.DataFrame({"블루": [None] * 9, "블랙": [None] * 9, "레드": [None] * 9}, index=quarters)
 
-# 1. 파일에서 데이터 읽어오기 함수
+# 1. 파일에서 데이터 읽어오기 함수 (구조 보정 및 데이터베이스 통합)
 def load_permanent_data():
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                
+                # 신규 저장소 구조 예외 처리 안전장치
                 if "MEMBER_DATABASE" not in data:
                     data["MEMBER_DATABASE"] = {
                         "손흥민": {"공격": 5.0, "수비": 4.0, "키퍼": 2.0},
@@ -33,6 +36,19 @@ def load_permanent_data():
                         "김민재": {"공격": 2.0, "수비": 5.0, "키퍼": 3.0},
                         "조현우": {"공격": 1.0, "수비": 2.0, "키퍼": 5.0}
                     }
+                if "history_logs" not in data:
+                    data["history_logs"] = [] # 날짜별 매치 마감 기록 장부
+                if "attendance_list" not in data:
+                    data["attendance_list"] = ["손흥민", "이강인", "황희찬", "김민재", "조현우"] + [""] * 13
+                if "match_mode" not in data:
+                    data["match_mode"] = "3파전"
+                if "score_data_dict" not in data:
+                    data["score_data_dict"] = get_blank_score_df("3파전").to_dict(orient="list")
+                    
+                # 구버전 장부 열 구조 싱크 보정
+                if "경기팀" in data["score_data_dict"]:
+                    del data["score_data_dict"]["경기팀"]
+                    
                 return data
         except:
             pass
@@ -47,7 +63,8 @@ def load_permanent_data():
         },
         "attendance_list": ["손흥민", "이강인", "황희찬", "김민재", "조현우"] + [""] * 13,
         "match_mode": "3파전",
-        "score_data_dict": get_blank_score_df("3파전").to_dict(orient="list")
+        "score_data_dict": get_blank_score_df("3파전").to_dict(orient="list"),
+        "history_logs": []
     }
 
 # 2. 파일에 데이터 영구 저장하기 함수
@@ -57,59 +74,53 @@ def save_permanent_data():
         "MEMBER_DATABASE": st.session_state.MEMBER_DATABASE,
         "attendance_list": st.session_state.attendance_list,
         "match_mode": st.session_state.match_mode,
-        "score_data_dict": score_dict
+        "score_data_dict": score_dict,
+        "history_logs": st.session_state.history_logs
     }
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
-# --- 최초 진입 시 장부 데이터 세션 로드 ---
+# --- 최초 진입 시 장부 데이터 세션 상주 ---
 if "initialized" not in st.session_state:
     perm_data = load_permanent_data()
     st.session_state.MEMBER_DATABASE = perm_data["MEMBER_DATABASE"]
     st.session_state.attendance_list = perm_data["attendance_list"]
     st.session_state.match_mode = perm_data["match_mode"]
+    st.session_state.history_logs = perm_data["history_logs"]
     
     mode = perm_data["match_mode"]
     quarters = [f"{i}쿼터" for i in range(1, 8 if mode == "2파전" else 10)]
-    
-    raw_scores = perm_data["score_data_dict"]
-    if "경기팀" in raw_scores:
-        del raw_scores["경기팀"]
-        
-    st.session_state.edited_score_df = pd.DataFrame(raw_scores, index=quarters)
+    st.session_state.edited_score_df = pd.DataFrame(perm_data["score_data_dict"], index=quarters)
     st.session_state.current_teams = {}
     st.session_state.initialized = True
 
-# 현재 선택된 대진 모드를 임시 기억할 세션 변수 생성
 if "temp_match_type" not in st.session_state:
     st.session_state.temp_match_type = "블루 vs 레드"
-
-# 3페이지 대량 입력용 표 초기화
 if "bulk_input_df" not in st.session_state:
     st.session_state.bulk_input_df = pd.DataFrame({
         "이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15
     })
-
 if "show_warning" not in st.session_state:
     st.session_state.show_warning = False
 
-# 메뉴 구조 정의
+# --- 메뉴 구조 정의 (회원 오픈 4개, 관리자 5번 이동) ---
 menu_1 = "1. 명단 및 팀배분"
 menu_2 = "2. 경기 기록실"
-menu_3 = "3. 회원별 점수"
+menu_3 = "3. 날짜별 기록실"
+menu_4 = "4. 회원별 통계실"
+menu_5 = "5. 회원별 점수"
 
 st.sidebar.title("MENU")
 
-# 관리자 인증
 st.sidebar.markdown("---")
 st.sidebar.subheader("관리자 인증")
 admin_password = st.sidebar.text_input("비밀번호 입력", type="password")
 is_admin = (admin_password == "1234")
 
 if is_admin:
-    menu_options = [menu_1, menu_2, menu_3]
+    menu_options = [menu_1, menu_2, menu_3, menu_4, menu_5]
 else:
-    menu_options = [menu_1, menu_2]
+    menu_options = [menu_1, menu_2, menu_3, menu_4]
 
 page = st.sidebar.radio("메뉴를 선택하세요", menu_options)
 st.sidebar.caption("제작자: by홍찬")
@@ -196,7 +207,7 @@ if page == menu_1:
         st.text_area("꾹 눌러서 복사 후 카톡 공지", value=katalk_text, height=140)
 
 # =========================================================================
-# 2페이지: 경기 기록실 (★ 원클릭 완벽 프리 대진 변환 버전)
+# 2페이지: 경기 기록실
 # =========================================================================
 elif page == menu_2:
     st.title(f"실시간 경기 기록실 ({st.session_state.match_mode})")
@@ -214,7 +225,6 @@ elif page == menu_2:
     val_black = None
     val_red = None
     
-    # ?? [대혁신] 에러를 일으키던 라디오 버튼을 싹 밀어버리고 '원클릭 전환 버튼' 도입!
     if st.session_state.match_mode == "3파전":
         st.write("이번 쿼터 경기팀 선택하기")
         btn_cols = st.columns(3)
@@ -225,7 +235,6 @@ elif page == menu_2:
         with btn_cols[2]:
             if st.button("블랙 vs 레드", use_container_width=True): st.session_state.temp_match_type = "블랙 vs 레드"
             
-        # 어떤 버튼이 눌려있는지 직관적으로 명시
         match_type = st.session_state.temp_match_type
         st.info(f"현재 입력 대기 중인 매치: [{match_type}]")
         
@@ -243,13 +252,12 @@ elif page == menu_2:
             with c2: val_red = st.number_input("레드 점수", min_value=0, max_value=99, value=int(current_q_data["레드"]) if pd.notna(current_q_data.get("레드")) else 0, step=1)
             val_blue = None
             
-    else: # 2파전일 때
+    else:
         c1, c2 = st.columns(2)
         with c1: val_blue = st.number_input("블루 점수", min_value=0, max_value=99, value=int(current_q_data["블루"]) if pd.notna(current_q_data.get("블루")) else 0, step=1)
         with c2: val_red = st.number_input("레드 점수", min_value=0, max_value=99, value=int(current_q_data["레드"]) if pd.notna(current_q_data.get("레드")) else 0, step=1)
 
     if st.button("해당 쿼터 점수 저장하기", use_container_width=True, type="primary"):
-        # 기존 데이터를 싹 비우고 새롭게 매칭된 데이터만 깨끗하게 덮어쓰기 (쉬는 팀 None 강제 주입)
         st.session_state.edited_score_df.at[selected_q, "블루"] = val_blue
         st.session_state.edited_score_df.at[selected_q, "레드"] = val_red
         if st.session_state.match_mode == "3파전":
@@ -315,6 +323,48 @@ elif page == menu_2:
             "승점": f"{stat['PTS']}점", "득실차 (득/실)": f"{stat['GD']} ({stat['GF']}/{stat['GA']})"
         })
     st.table(pd.DataFrame(final_display).set_index("순위"))
+
+    # ?? [새 기능] 오늘 경기 벌금 자동 마감 정산 시스템 (팀원 배분 명단이 존재할 때만 작동)
+    if st.session_state.current_teams:
+        st.markdown("---")
+        st.subheader("오늘의 정산 마감 구역")
+        st.write("모든 쿼터 입력이 끝났다면 아래 버튼을 눌러 날짜별 장부에 오늘 전적과 벌금을 저장하세요.")
+        
+        if st.button("오늘 경기 정산 및 마감하기", use_container_width=True, type="primary"):
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            
+            # 최종 랭킹 순서대로 팀 정렬
+            ranked_teams = sort_df["팀"].tolist()
+            
+            log_entry = {
+                "date": today_str,
+                "mode": st.session_state.match_mode,
+                "ranks": {},
+                "fines": {}
+            }
+            
+            # 순위별 명단 매칭 및 벌금 부과 연산
+            for rank_idx, t_name in enumerate(ranked_teams):
+                rank_num = rank_idx + 1
+                team_players = [p["name"] for p in st.session_state.current_teams[t_name]]
+                log_entry["ranks"][f"{rank_num}위"] = f"{t_name}팀 ({', '.join(team_players)})"
+                
+                # 벌금 룰 계산 (2파전 vs 3파전)
+                if st.session_state.match_mode == "2파전":
+                    fine_amount = 0 if rank_num == 1 else 2000
+                else:
+                    if rank_num == 1: fine_amount = 0
+                    elif rank_num == 2: fine_amount = 1000
+                    else: fine_amount = 2000
+                    
+                for p_name in team_players:
+                    log_entry["fines"][p_name] = {"team": t_name, "rank": rank_num, "fine": fine_amount}
+            
+            # 영구 장부에 마감 일지 추가
+            st.session_state.history_logs.append(log_entry)
+            save_permanent_data()
+            st.success(f"정산 완료! {today_str}자 전적과 회비 장부가 안전하게 기록되었습니다. 3번 메뉴에서 확인하세요.")
+            st.rerun()
     
     if is_admin:
         st.markdown("---")
@@ -324,10 +374,83 @@ elif page == menu_2:
             st.rerun()
 
 # =========================================================================
-# 3페이지: 회원별 점수 관리실
+# 3페이지: 날짜별 기록실 (★ 새로운 메뉴창 - 대량 일지 가독성 표출)
+# =========================================================================
+elif page == menu_3:
+    st.title("3. 날짜별 기록실")
+    st.write("오늘 경기 정산 및 마감하기 버튼을 누른 매주 경기 결과가 날짜별로 누적 저장되는 공간입니다.")
+    
+    if not st.session_state.history_logs:
+        st.info("아직 마감된 정산 장부 기록이 없습니다. 경기 종료 후 2번 메뉴 하단에서 마감을 진행해 주세요.")
+    else:
+        for item in reversed(st.session_state.history_logs):
+            with st.expander(f"경기 날짜 : {item['date']} ({item['mode']})", expanded=True):
+                # 순위 가독성 좋게 출력
+                st.markdown(f"**1등 우승팀:** {item['ranks'].get('1위', '정보 없음')}")
+                if item['mode'] == "3파전":
+                    st.write(f"2등 준우승팀: {item['ranks'].get('2위', '정보 없음')}")
+                    st.write(f"3등 하위팀: {item['ranks'].get('3위', '정보 없음')}")
+                else:
+                    st.write(f"2등 준우승팀: {item['ranks'].get('2위', '정보 없음')}")
+                    
+                # 벌금 내역 요약 표 구성
+                st.markdown("**이날의 개인별 벌금 정산표**")
+                fine_table = []
+                for p_name, f_info in item["fines"].items():
+                    fine_table.append({
+                        "이름": p_name, "소속팀": f"{f_info['team']}팀", "최종순위": f"{f_info['rank']}위", "정산벌금": f"{f_info['fine']}원"
+                    })
+                st.table(pd.DataFrame(fine_table))
+
+# =========================================================================
+# 4페이지: 회원별 통계실 (★ 새로운 메뉴창 - 회원별 누적 승률 및 주별 벌금)
+# =========================================================================
+elif page == menu_4:
+    st.title("4. 회원별 통계실")
+    st.write("등록된 전 회원의 매치 참여 경기수, 우승 확률(승률) 및 누적 회비 벌금 정산 내역입니다.")
+    
+    # 도감에 등록된 회원 목록 기준으로 통계 테이블 생성
+    stats_map = {}
+    for name in st.session_state.MEMBER_DATABASE.keys():
+        stats_map[name] = {"MP": 0, "W": 0, "total_fine": 0}
+        
+    # 날짜별 누적 장부를 싹 돌면서 개인별 승무패 및 벌금 수치 연산
+    for item in st.session_state.history_logs:
+        for p_name, f_info in item["fines"].items():
+            if p_name not in stats_map:
+                # 도감엔 없지만 과거 기록에 있는 경우 예외 추가
+                stats_map[p_name] = {"MP": 0, "W": 0, "total_fine": 0}
+            
+            stats_map[p_name]["MP"] += 1
+            if f_info["rank"] == 1:
+                stats_map[p_name]["W"] += 1
+            stats_map[p_name]["total_fine"] += f_info["fine"]
+            
+    # 화면 출력용 데이터프레임 변환
+    display_stats = []
+    for p_name, s_data in stats_map.items():
+        win_rate = (s_data["W"] / s_data["MP"] * 100) if s_data["MP"] > 0 else 0.0
+        display_stats.append({
+            "회원이름": p_name,
+            "총 참석 주수": f"{s_data['MP']}주",
+            "우승 횟수": f"{s_data['W']}회",
+            "우승 확률(승률)": f"{win_rate:.1f}%",
+            "누적 벌금 총액": f"{s_data['total_fine']}원"
+        })
+        
+    df_stats = pd.DataFrame(display_stats)
+    if df_stats.empty:
+        st.info("누적된 회원 전적 데이터가 없습니다.")
+    else:
+        # 승률 순으로 랭킹 정렬하여 표출
+        df_stats = df_stats.sort_values(by="우승 횟수", ascending=False).reset_index(drop=True)
+        st.dataframe(df_stats, use_container_width=True, hide_index=True)
+
+# =========================================================================
+# 5페이지: 회원별 점수 관리실 (관리자 전용 메뉴로 하강)
 # =========================================================================
 else:
-    st.title("3. 회원별 점수 관리실")
+    st.title("5. 회원별 점수 관리실")
     
     st.subheader("신규 회원 대량 복붙 / 등록")
     st.write("엑셀 데이터를 [이름, 공격, 수비, 키퍼] 순서대로 복사해서 아래 표 첫 칸에 붙여넣기 하세요.")
@@ -347,7 +470,7 @@ else:
     )
     st.session_state.bulk_input_df = grid_bulk
 
-    if st.button("до감에 신규 데이터 일괄 저장하기", use_container_width=True, type="primary"):
+    if st.button("도감에 신규 데이터 일괄 저장하기", use_container_width=True, type="primary"):
         saved_count = 0
         for _, row in grid_bulk.iterrows():
             name = str(row["이름"]).strip()
