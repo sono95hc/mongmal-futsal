@@ -30,7 +30,9 @@ def load_permanent_data():
         "attendance_list": ["손흥민", "이강인", "황희찬", "김민재", "조현우"],
         "match_mode": "3파전",
         "score_data_dict": get_blank_score_df("3파전").to_dict(orient="list"),
-        "history_logs": []
+        "history_logs": [],
+        "current_teams": {},
+        "current_q_idx": 0
     }
 
     if os.path.exists(DB_FILE):
@@ -38,16 +40,14 @@ def load_permanent_data():
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 
-                if "MEMBER_DATABASE" not in data:
-                    data["MEMBER_DATABASE"] = default_data["MEMBER_DATABASE"]
-                if "attendance_list" not in data:
-                    data["attendance_list"] = default_data["attendance_list"]
-                if "match_mode" not in data:
-                    data["match_mode"] = "3파전"
-                if "score_data_dict" not in data:
-                    data["score_data_dict"] = default_data["score_data_dict"]
-                if "history_logs" not in data:
-                    data["history_logs"] = []
+                if "MEMBER_DATABASE" not in data: data["MEMBER_DATABASE"] = default_data["MEMBER_DATABASE"]
+                if "attendance_list" not in data: data["attendance_list"] = default_data["attendance_list"]
+                if "match_mode" not in data: data["match_mode"] = "3파전"
+                if "score_data_dict" not in data: data["score_data_dict"] = default_data["score_data_dict"]
+                if "history_logs" not in data: data["history_logs"] = []
+                # [핵심 수정] 팀 명단과 현재 쿼터 기억을 장부에서 불러옵니다.
+                if "current_teams" not in data: data["current_teams"] = {}
+                if "current_q_idx" not in data: data["current_q_idx"] = 0
                     
                 if "경기팀" in data["score_data_dict"]:
                     del data["score_data_dict"]["경기팀"]
@@ -61,26 +61,28 @@ def load_permanent_data():
 def save_permanent_data():
     score_dict = st.session_state.edited_score_df.to_dict(orient="list")
     clean_attendance = [x for x in st.session_state.attendance_list if x.strip()]
+    
     data_to_save = {
         "MEMBER_DATABASE": st.session_state.MEMBER_DATABASE,
         "attendance_list": clean_attendance,
         "match_mode": st.session_state.match_mode,
         "score_data_dict": score_dict,
-        "history_logs": st.session_state.get("history_logs", [])
+        "history_logs": st.session_state.get("history_logs", []),
+        "current_teams": st.session_state.get("current_teams", {}),
+        "current_q_idx": st.session_state.get("current_q_idx", 0)
     }
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
 perm_data = load_permanent_data()
 
-if "MEMBER_DATABASE" not in st.session_state:
-    st.session_state.MEMBER_DATABASE = perm_data["MEMBER_DATABASE"]
-if "attendance_list" not in st.session_state:
-    st.session_state.attendance_list = [x for x in perm_data["attendance_list"] if x.strip()]
-if "match_mode" not in st.session_state:
-    st.session_state.match_mode = perm_data["match_mode"]
-if "history_logs" not in st.session_state:
-    st.session_state.history_logs = perm_data["history_logs"]
+if "MEMBER_DATABASE" not in st.session_state: st.session_state.MEMBER_DATABASE = perm_data["MEMBER_DATABASE"]
+if "attendance_list" not in st.session_state: st.session_state.attendance_list = [x for x in perm_data["attendance_list"] if x.strip()]
+if "match_mode" not in st.session_state: st.session_state.match_mode = perm_data["match_mode"]
+if "history_logs" not in st.session_state: st.session_state.history_logs = perm_data["history_logs"]
+if "current_teams" not in st.session_state: st.session_state.current_teams = perm_data.get("current_teams", {})
+if "current_q_idx" not in st.session_state: st.session_state.current_q_idx = perm_data.get("current_q_idx", 0)
+
 if "ai_teams" not in st.session_state:
     st.session_state.ai_teams = {}
 
@@ -89,8 +91,6 @@ if "edited_score_df" not in st.session_state:
     quarters = [f"{i}쿼터" for i in range(1, 8 if mode == "2파전" else 10)]
     st.session_state.edited_score_df = pd.DataFrame(perm_data["score_data_dict"], index=quarters)
 
-if "current_teams" not in st.session_state:
-    st.session_state.current_teams = {}
 if "temp_match_type" not in st.session_state:
     st.session_state.temp_match_type = "블루 vs 레드"
 if "bulk_input_df" not in st.session_state:
@@ -101,8 +101,6 @@ if "show_warning" not in st.session_state:
     st.session_state.show_warning = False
 if "confirm_close" not in st.session_state:
     st.session_state.confirm_close = False
-if "current_q_idx" not in st.session_state:
-    st.session_state.current_q_idx = 0
 
 menu_1 = "1. 명단 및 팀배분"
 menu_2 = "2. 경기 기록실"
@@ -152,8 +150,6 @@ if page == menu_1:
     st.write("AI 버튼을 누르면 실력과 지난주 팀 조합을 분석하여 자동 배분됩니다.")
     
     if st.button("AI 자동 밸런스 매칭 가동", use_container_width=True):
-        
-        # [핵심 로직] 지난주 팀 데이터 추출
         prev_teams = {}
         if st.session_state.history_logs:
             last_log = st.session_state.history_logs[-1]
@@ -173,7 +169,6 @@ if page == menu_1:
         teams_keys = ["레드", "블루"] if "2파전" in selected_mode else ["블랙", "레드", "블루"]
         new_teams = {t: [] for t in teams_keys}
         
-        # 상위권부터 차례대로 묶음을 나누어 배정 (전주 같은 팀 회피 알고리즘)
         for i in range(0, len(players), len(teams_keys)):
             chunk = players[i:i+len(teams_keys)]
             best_perm = None
@@ -194,7 +189,6 @@ if page == menu_1:
                         for idx2 in range(idx1+1, len(members)):
                             m1 = members[idx1]["name"]
                             m2 = members[idx2]["name"]
-                            # 전주에 같은 팀이었다면 패널티 부과 (잘하는 사람일수록 패널티가 커서 무조건 찢어짐)
                             if m1 in prev_teams and m2 in prev_teams and prev_teams[m1] == prev_teams[m2]:
                                 current_penalty += (members[idx1]["total"] + members[idx2]["total"])
                                 
@@ -256,7 +250,9 @@ if page == menu_1:
                         st.session_state.current_teams[t_name].append({"name": p_name})
                         
                 st.session_state.edited_score_df = get_blank_score_df(new_mode)
-                st.session_state.current_q_idx = 0 # 새로운 팀 짜면 1쿼터로 세팅
+                st.session_state.current_q_idx = 0
+                
+                # [핵심 수정] 확정된 팀 데이터를 영구 장부에 즉시 저장
                 save_permanent_data()
                 st.rerun()
                 
@@ -291,7 +287,6 @@ elif page == menu_2:
     loop_count = 8 if st.session_state.match_mode == "2파전" else 9
     quarter_options = [f"{i}쿼터" for i in range(1, loop_count + 1)]
     
-    # 세션 인덱스와 셀렉트박스 동기화 (수동 변경 감지)
     selected_q = st.selectbox("기록할 쿼터 선택", quarter_options, index=st.session_state.current_q_idx)
     st.session_state.current_q_idx = quarter_options.index(selected_q)
     
@@ -339,13 +334,12 @@ elif page == menu_2:
         if st.session_state.match_mode == "3파전":
             st.session_state.edited_score_df.at[selected_q, "블랙"] = val_black
             
-        save_permanent_data()
-        st.success(f"[{selected_q}] 점수가 성공적으로 저장되었습니다.")
-        
-        # 쿼터 자동 넘김 로직
+        # 쿼터 자동 넘김
         if st.session_state.current_q_idx < loop_count - 1:
             st.session_state.current_q_idx += 1
             
+        save_permanent_data()
+        st.success(f"[{selected_q}] 점수가 성공적으로 저장되었습니다.")
         st.rerun()
 
     st.markdown("---")
@@ -404,6 +398,7 @@ elif page == menu_2:
         })
     st.table(pd.DataFrame(final_display).set_index("순위"))
 
+    # 팀 배정이 되어 있어야만 마감 버튼이 노출됨
     if st.session_state.current_teams:
         st.markdown("---")
         st.subheader("오늘의 정산 마감 구역")
@@ -445,6 +440,7 @@ elif page == menu_2:
                     st.session_state.history_logs.append(log_entry)
                     save_permanent_data()
                     st.session_state.confirm_close = False
+                    st.success("정산 완료. 기록이 안전하게 저장되었습니다.")
                     st.rerun()
             with c2:
                 if st.button("아니오, 취소", use_container_width=True):
