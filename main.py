@@ -321,7 +321,7 @@ elif page == menu_2:
         st.write("모든 쿼터 입력이 끝났다면 아래 버튼을 눌러 날짜별 장부에 오늘 전적과 벌금을 저장하세요.")
         
         if st.button("오늘 경기 정산 및 마감하기", use_container_width=True, type="primary"):
-            today_str = datetime.now().strftime("%Y-%m-%d")
+            today_str = datetime.now().strftime("%Y-%m-%d %H:%M")
             ranked_teams = sort_df["팀"].tolist()
             
             log_entry = {
@@ -359,7 +359,7 @@ elif page == menu_2:
             st.rerun()
 
 # =========================================================================
-# 3페이지
+# 3페이지 (관리자 삭제 기능 추가)
 # =========================================================================
 elif page == menu_3:
     st.title("3. 날짜별 기록실")
@@ -368,9 +368,11 @@ elif page == menu_3:
     if not st.session_state.history_logs:
         st.info("아직 마감된 정산 장부 기록이 없습니다.")
     else:
-        for item in reversed(st.session_state.history_logs):
+        # 인덱스 추적을 위해 enumerate 사용 (역순 출력이므로 원래 인덱스 계산 필요)
+        for idx, item in enumerate(reversed(st.session_state.history_logs)):
+            real_idx = len(st.session_state.history_logs) - 1 - idx
+            
             with st.expander(f"경기 날짜 : {item.get('date', '날짜 미상')} ({item.get('mode', '3파전')})", expanded=True):
-                
                 ranks_dict = item.get("ranks", {})
                 st.markdown(f"**1등 우승팀:** {ranks_dict.get('1위', '정보 없음')}")
                 if item.get('mode', '3파전') == "3파전":
@@ -392,13 +394,20 @@ elif page == menu_3:
                 if fine_table:
                     st.table(pd.DataFrame(fine_table))
 
+                # 관리자에게만 노출되는 삭제 버튼 추가
+                if is_admin:
+                    if st.button("이 기록 삭제하기 (관리자 전용)", key=f"del_log_{real_idx}"):
+                        st.session_state.history_logs.pop(real_idx)
+                        save_permanent_data()
+                        st.rerun()
+
 # =========================================================================
 # 4페이지
 # =========================================================================
 elif page == menu_4:
     st.title("4. 회원별 통계실")
     st.write("등록된 정식 회원의 매치 참여 경기수, 우승 확률(승률) 및 누적 회비 벌금 정산 내역입니다.")
-    st.caption("참고: 5번 관리자 메뉴(도감)에 등록되지 않은 일일 용병은 통계표에서 자동으로 제외됩니다.")
+    st.caption("참고: 5번 관리자 메뉴에 등록되지 않은 일일 용병은 통계표에서 자동으로 제외됩니다.")
     
     stats_map = {}
     for name in st.session_state.MEMBER_DATABASE.keys():
@@ -408,8 +417,6 @@ elif page == menu_4:
         for item in st.session_state.history_logs:
             fines_dict = item.get("fines", {})
             for p_name, f_info in fines_dict.items():
-                
-                # 용병 필터링 로직: 정식 도감에 없는 이름은 통계에서 완벽 무시!
                 if p_name not in st.session_state.MEMBER_DATABASE:
                     continue
                 
