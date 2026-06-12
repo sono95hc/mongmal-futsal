@@ -59,9 +59,7 @@ def load_permanent_data():
 
 def save_permanent_data():
     score_dict = st.session_state.edited_score_df.to_dict(orient="list")
-    
     clean_attendance = [x for x in st.session_state.attendance_list if x.strip()]
-    
     data_to_save = {
         "MEMBER_DATABASE": st.session_state.MEMBER_DATABASE,
         "attendance_list": clean_attendance,
@@ -125,7 +123,7 @@ st.sidebar.caption("제작자: by홍찬")
 
 
 # =========================================================================
-# 1페이지 (완전 초고속, 버그없는 모바일 최적화 방식)
+# 1페이지
 # =========================================================================
 if page == menu_1:
     st.title("몽말 팀배분 프로그램")
@@ -175,14 +173,19 @@ if page == menu_1:
                 assigned_dict[p["name"]] = teams[order[idx % 3]]
                 
         st.session_state.ai_teams = assigned_dict
+        
+        # ★ [핵심 패치] AI가 짠 결과를 화면(선택박스)에도 억지로 덮어씌워버립니다!
+        for p_name, t_name in assigned_dict.items():
+            st.session_state[f"sel_{p_name}"] = t_name
+            
         st.rerun()
 
-    # 모바일 속도를 위한 선택박스 다중 배열
     final_team_selections = {}
     if current_att_list:
         cols = st.columns(2)
         for idx, player_name in enumerate(current_att_list):
             col = cols[idx % 2]
+            
             default_team = st.session_state.ai_teams.get(player_name, "미배정")
             if default_team not in team_options:
                 default_team = "미배정"
@@ -357,7 +360,6 @@ elif page == menu_2:
         st.subheader("오늘의 정산 마감 구역")
         st.write("모든 쿼터 입력이 끝났다면 아래 버튼을 눌러 날짜별 장부에 오늘 전적과 벌금을 저장하세요.")
         
-        # 더블 체크 안전 장치 추가
         if st.button("오늘 경기 정산 및 마감하기", use_container_width=True, type="primary"):
             st.session_state.confirm_close = True
             
@@ -408,7 +410,7 @@ elif page == menu_2:
             st.rerun()
 
 # =========================================================================
-# 3페이지 (가독성 대폭 강화)
+# 3페이지
 # =========================================================================
 elif page == menu_3:
     st.title("3. 날짜별 기록실")
@@ -423,7 +425,6 @@ elif page == menu_3:
             with st.expander(f"[ {item.get('date', '날짜 미상')} ] - {item.get('mode', '3파전')} 결과", expanded=True):
                 ranks_dict = item.get("ranks", {})
                 
-                # 순위 리포트 형식으로 가독성 개선
                 st.markdown(f"> **[1위 우승]** {ranks_dict.get('1위', '정보 없음')}")
                 if item.get('mode', '3파전') == "3파전":
                     st.markdown(f"> **[2위]** {ranks_dict.get('2위', '정보 없음')}")
@@ -444,7 +445,6 @@ elif page == menu_3:
                         "벌금": f"{f_info.get('fine', 0)}원"
                     })
                 if fine_table:
-                    # 인덱스 숨기고 깔끔하게 출력
                     st.dataframe(pd.DataFrame(fine_table), use_container_width=True, hide_index=True)
 
                 if is_admin:
@@ -454,7 +454,7 @@ elif page == menu_3:
                         st.rerun()
 
 # =========================================================================
-# 4페이지 (가독성 대폭 강화)
+# 4페이지
 # =========================================================================
 elif page == menu_4:
     st.title("4. 회원별 통계실")
@@ -492,7 +492,6 @@ elif page == menu_4:
     if df_stats.empty:
         st.info("아직 누적된 전적 데이터가 없습니다.")
     else:
-        # 우승 횟수 및 참석 수 기준 내림차순 정렬 후 인덱스(순위) 부여
         df_stats = df_stats.sort_values(by=["우승", "참석"], ascending=[False, False]).reset_index(drop=True)
         df_stats.index = range(1, len(df_stats) + 1)
         df_stats = df_stats.rename_axis("순위")
@@ -527,7 +526,7 @@ else:
         saved_count = 0
         for _, row in grid_bulk.iterrows():
             name = str(row["이름"]).strip()
-            if name and name != "None" and name != "":
+            if name and name and name != "None" and name != "":
                 st.session_state.MEMBER_DATABASE[name] = {
                     "공격": round(float(row["공격"]), 2), "수비": round(float(row["수비"]), 2), "키퍼": round(float(row["키퍼"]), 2)
                 }
