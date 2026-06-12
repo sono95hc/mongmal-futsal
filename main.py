@@ -5,13 +5,10 @@ import json
 import os
 from datetime import datetime
 
-# 스마트폰 화면 및 브라우저 타이틀 설정
 st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="centered")
 
-# --- [파일 영구 저장 엔진] 시스템 설정 ---
 DB_FILE = "futsal_data.json"
 
-# 초기 데이터 구조 정의
 def get_blank_score_df(mode="3파전"):
     if mode == "2파전":
         quarters = [f"{i}쿼터" for i in range(1, 9)]
@@ -20,7 +17,6 @@ def get_blank_score_df(mode="3파전"):
         quarters = [f"{i}쿼터" for i in range(1, 10)]
         return pd.DataFrame({"블루": [None] * 9, "블랙": [None] * 9, "레드": [None] * 9}, index=quarters)
 
-# 1. 파일에서 데이터 읽어오기 함수
 def load_permanent_data():
     default_data = {
         "MEMBER_DATABASE": {
@@ -61,7 +57,6 @@ def load_permanent_data():
             
     return default_data
 
-# 2. 파일에 데이터 영구 저장하기 함수
 def save_permanent_data():
     score_dict = st.session_state.edited_score_df.to_dict(orient="list")
     data_to_save = {
@@ -69,25 +64,30 @@ def save_permanent_data():
         "attendance_list": st.session_state.attendance_list,
         "match_mode": st.session_state.match_mode,
         "score_data_dict": score_dict,
-        "history_logs": st.session_state.history_logs
+        "history_logs": st.session_state.get("history_logs", [])
     }
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
-# --- 최초 진입 시 장부 데이터 세션 로드 ---
-if "initialized" not in st.session_state:
-    perm_data = load_permanent_data()
+# [핵심 수정] 코드가 중간에 바뀌어도 세션 메모리 누락이 없도록 개별 항목 강제 동기화
+perm_data = load_permanent_data()
+
+if "MEMBER_DATABASE" not in st.session_state:
     st.session_state.MEMBER_DATABASE = perm_data["MEMBER_DATABASE"]
+if "attendance_list" not in st.session_state:
     st.session_state.attendance_list = perm_data["attendance_list"]
+if "match_mode" not in st.session_state:
     st.session_state.match_mode = perm_data["match_mode"]
+if "history_logs" not in st.session_state:
     st.session_state.history_logs = perm_data["history_logs"]
-    
-    mode = perm_data["match_mode"]
+
+if "edited_score_df" not in st.session_state:
+    mode = st.session_state.match_mode
     quarters = [f"{i}쿼터" for i in range(1, 8 if mode == "2파전" else 10)]
     st.session_state.edited_score_df = pd.DataFrame(perm_data["score_data_dict"], index=quarters)
-    st.session_state.current_teams = {}
-    st.session_state.initialized = True
 
+if "current_teams" not in st.session_state:
+    st.session_state.current_teams = {}
 if "temp_match_type" not in st.session_state:
     st.session_state.temp_match_type = "블루 vs 레드"
 if "bulk_input_df" not in st.session_state:
@@ -97,7 +97,6 @@ if "bulk_input_df" not in st.session_state:
 if "show_warning" not in st.session_state:
     st.session_state.show_warning = False
 
-# --- 메뉴 구조 정의 ---
 menu_1 = "1. 명단 및 팀배분"
 menu_2 = "2. 경기 기록실"
 menu_3 = "3. 날짜별 기록실"
@@ -121,7 +120,7 @@ st.sidebar.caption("제작자: by홍찬")
 
 
 # =========================================================================
-# 1페이지: 선수 명단 및 팀 배분 기능
+# 1페이지
 # =========================================================================
 if page == menu_1:
     st.title("몽말 팀배분 프로그램")
@@ -201,7 +200,7 @@ if page == menu_1:
         st.text_area("꾹 눌러서 복사 후 카톡 공지", value=katalk_text, height=140)
 
 # =========================================================================
-# 2페이지: 경기 기록실
+# 2페이지
 # =========================================================================
 elif page == menu_2:
     st.title(f"실시간 경기 기록실 ({st.session_state.match_mode})")
@@ -258,7 +257,7 @@ elif page == menu_2:
             st.session_state.edited_score_df.at[selected_q, "블랙"] = val_black
             
         save_permanent_data()
-        st.success(f"{selected_q} 점수가 성공적으로 저장되었습니다!")
+        st.success(f"{selected_q} 점수가 성공적으로 저장되었습니다.")
         st.rerun()
 
     st.markdown("---")
@@ -268,7 +267,6 @@ elif page == menu_2:
     display_score_df = display_score_df.fillna("-")
     st.dataframe(display_score_df, use_container_width=True)
 
-    # --- 전적 계산 엔진 ---
     history_keys = ["레드", "블루"] if st.session_state.match_mode == "2파전" else ["레드", "블랙", "블루"]
     history = {t: {"W": 0, "D": 0, "L": 0, "GF": 0, "GA": 0, "GD": 0, "PTS": 0, "MP": 0} for t in history_keys}
 
@@ -318,7 +316,6 @@ elif page == menu_2:
         })
     st.table(pd.DataFrame(final_display).set_index("순위"))
 
-    # 오늘 경기 마감 저장 구역
     if st.session_state.current_teams:
         st.markdown("---")
         st.subheader("오늘의 정산 마감 구역")
@@ -328,7 +325,6 @@ elif page == menu_2:
             today_str = datetime.now().strftime("%Y-%m-%d")
             ranked_teams = sort_df["팀"].tolist()
             
-            # ?? [버그 완벽 수정]ranks 대조 에러를 방지하기 위해 key 구조 명확화
             log_entry = {
                 "date": today_str,
                 "mode": st.session_state.match_mode,
@@ -353,7 +349,7 @@ elif page == menu_2:
             
             st.session_state.history_logs.append(log_entry)
             save_permanent_data()
-            st.success(f"정산 완료! {today_str}자 전적과 회비 장부가 안전하게 기록되었습니다.")
+            st.success("정산 완료. 기록이 안전하게 저장되었습니다.")
             st.rerun()
     
     if is_admin:
@@ -364,19 +360,18 @@ elif page == menu_2:
             st.rerun()
 
 # =========================================================================
-# 3페이지: 날짜별 기록실
+# 3페이지
 # =========================================================================
 elif page == menu_3:
     st.title("3. 날짜별 기록실")
     st.write("오늘 경기 정산 및 마감하기 버튼을 누른 매주 경기 결과가 날짜별로 누적 저장되는 공간입니다.")
     
-    if "history_logs" not in st.session_state or not st.session_state.history_logs:
-        st.info("아직 마감된 정산 장부 기록이 없습니다. 경기 종료 후 2번 메뉴 하단에서 마감을 진행해 주세요.")
+    if not st.session_state.history_logs:
+        st.info("아직 마감된 정산 장부 기록이 없습니다.")
     else:
         for item in reversed(st.session_state.history_logs):
             with st.expander(f"경기 날짜 : {item.get('date', '날짜 미상')} ({item.get('mode', '3파전')})", expanded=True):
                 
-                # ?? [.get() 예외 처리] 혹시라도 비어있는 구데이터가 들어와도 멈추지 않음
                 ranks_dict = item.get("ranks", {})
                 st.markdown(f"**1등 우승팀:** {ranks_dict.get('1위', '정보 없음')}")
                 if item.get('mode', '3파전') == "3파전":
@@ -397,21 +392,19 @@ elif page == menu_3:
                     })
                 if fine_table:
                     st.table(pd.DataFrame(fine_table))
-                else:
-                    st.caption("개인별 세부 정산 기록이 없습니다.")
 
 # =========================================================================
-# 4페이지: 회원별 통계실
+# 4페이지
 # =========================================================================
 elif page == menu_4:
     st.title("4. 회원별 통계실")
-    st.write("등록된 전 회원의 매치 참여 경기수, 우승 확률(승률) 및 누적 회비 벌금 정산 내역입니다.")
+    st.write("등록된 전 회원의 매치 참여 경기수, 우승 확률 및 누적 회비 벌금 정산 내역입니다.")
     
     stats_map = {}
     for name in st.session_state.MEMBER_DATABASE.keys():
         stats_map[name] = {"MP": 0, "W": 0, "total_fine": 0}
         
-    if "history_logs" in st.session_state and st.session_state.history_logs:
+    if st.session_state.history_logs:
         for item in st.session_state.history_logs:
             fines_dict = item.get("fines", {})
             for p_name, f_info in fines_dict.items():
@@ -442,7 +435,7 @@ elif page == menu_4:
         st.dataframe(df_stats, use_container_width=True, hide_index=True)
 
 # =========================================================================
-# 5페이지: 회원별 점수 관리실
+# 5페이지
 # =========================================================================
 else:
     st.title("5. 회원별 점수 관리실")
@@ -477,7 +470,7 @@ else:
         if saved_count > 0:
             save_permanent_data()
             st.session_state.bulk_input_df = pd.DataFrame({"이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15})
-            st.success(f"성공! 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
+            st.success(f"성공. 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
             st.rerun()
         else:
             st.error("입력된 이름이 없습니다.")
@@ -523,5 +516,5 @@ else:
                     }
             st.session_state.MEMBER_DATABASE = new_database
             save_permanent_data()
-            st.success("도감의 수정/삭제 변경사항이 장부에 영구 저장되었습니다!")
+            st.success("도감의 수정 변경사항이 장부에 영구 저장되었습니다.")
             st.rerun()
