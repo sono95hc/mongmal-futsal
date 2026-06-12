@@ -69,7 +69,6 @@ def save_permanent_data():
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
-# [핵심 수정] 코드가 중간에 바뀌어도 세션 메모리 누락이 없도록 개별 항목 강제 동기화
 perm_data = load_permanent_data()
 
 if "MEMBER_DATABASE" not in st.session_state:
@@ -398,7 +397,8 @@ elif page == menu_3:
 # =========================================================================
 elif page == menu_4:
     st.title("4. 회원별 통계실")
-    st.write("등록된 전 회원의 매치 참여 경기수, 우승 확률 및 누적 회비 벌금 정산 내역입니다.")
+    st.write("등록된 정식 회원의 매치 참여 경기수, 우승 확률(승률) 및 누적 회비 벌금 정산 내역입니다.")
+    st.caption("참고: 5번 관리자 메뉴(도감)에 등록되지 않은 일일 용병은 통계표에서 자동으로 제외됩니다.")
     
     stats_map = {}
     for name in st.session_state.MEMBER_DATABASE.keys():
@@ -408,8 +408,10 @@ elif page == menu_4:
         for item in st.session_state.history_logs:
             fines_dict = item.get("fines", {})
             for p_name, f_info in fines_dict.items():
-                if p_name not in stats_map:
-                    stats_map[p_name] = {"MP": 0, "W": 0, "total_fine": 0}
+                
+                # 용병 필터링 로직: 정식 도감에 없는 이름은 통계에서 완벽 무시!
+                if p_name not in st.session_state.MEMBER_DATABASE:
+                    continue
                 
                 stats_map[p_name]["MP"] += 1
                 if f_info.get("rank") == 1:
@@ -429,7 +431,7 @@ elif page == menu_4:
         
     df_stats = pd.DataFrame(display_stats)
     if df_stats.empty:
-        st.info("누적된 회원 전적 데이터가 없습니다.")
+        st.info("누적된 정식 회원 전적 데이터가 없습니다.")
     else:
         df_stats = df_stats.sort_values(by="우승 횟수", ascending=False).reset_index(drop=True)
         st.dataframe(df_stats, use_container_width=True, hide_index=True)
