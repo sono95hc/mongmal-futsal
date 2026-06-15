@@ -13,7 +13,6 @@ st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="
 
 DB_FILE = "futsal_data.json"
 
-# [보안/규격 완벽 수정] 깃허브 백업 엔진
 def push_to_github(content_str):
     try:
         if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
@@ -55,7 +54,7 @@ def push_to_github(content_str):
         pass
 
 def get_blank_score_df(mode="3파전"):
-    if mode == "2파전":
+    if "2파전" in mode:
         quarters = [f"{i}쿼터" for i in range(1, 9)]
         return pd.DataFrame({"블루": [None] * 8, "레드": [None] * 8}, index=quarters)
     else:
@@ -86,7 +85,6 @@ def load_permanent_data():
                 
                 if "MEMBER_DATABASE" not in data: data["MEMBER_DATABASE"] = default_data["MEMBER_DATABASE"]
                 
-                # [MMR 패치] 기존 회원 데이터에 MMR이 없으면 1000점으로 싹 다 초기화해서 에러 방지
                 for p_name in data["MEMBER_DATABASE"]:
                     if "MMR" not in data["MEMBER_DATABASE"][p_name]:
                         data["MEMBER_DATABASE"][p_name]["MMR"] = 1000
@@ -108,51 +106,67 @@ def load_permanent_data():
     return default_data
 
 def save_permanent_data():
-    score_dict = st.session_state.edited_score_df.to_dict(orient="list")
-    clean_attendance = [x for x in st.session_state.attendance_list if x.strip()]
+    # [치명적 에러 패치] 세션이 아직 준비되지 않았을 때 튕기는 현상 완벽 방어
+    try:
+        score_dict = st.session_state.edited_score_df.to_dict(orient="list")
+    except:
+        score_dict = get_blank_score_df(st.session_state.get("match_mode", "3파전")).to_dict(orient="list")
+
+    att_list = st.session_state.get("attendance_list", [])
+    clean_attendance = [str(x).strip() for x in att_list if x and str(x).strip()]
+    
     data_to_save = {
-        "MEMBER_DATABASE": st.session_state.MEMBER_DATABASE,
+        "MEMBER_DATABASE": st.session_state.get("MEMBER_DATABASE", {}),
         "attendance_list": clean_attendance,
-        "match_mode": st.session_state.match_mode,
+        "match_mode": st.session_state.get("match_mode", "3파전"),
         "score_data_dict": score_dict,
         "history_logs": st.session_state.get("history_logs", []),
         "current_teams": st.session_state.get("current_teams", {}),
         "current_q_idx": st.session_state.get("current_q_idx", 0)
     }
     
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
-        
-    json_str = json.dumps(data_to_save, ensure_ascii=False, indent=4)
-    push_to_github(json_str)
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+            
+        json_str = json.dumps(data_to_save, ensure_ascii=False, indent=4)
+        push_to_github(json_str)
+    except:
+        pass
 
 perm_data = load_permanent_data()
 
-if "MEMBER_DATABASE" not in st.session_state: st.session_state.MEMBER_DATABASE = perm_data["MEMBER_DATABASE"]
-if "attendance_list" not in st.session_state: st.session_state.attendance_list = [x for x in perm_data["attendance_list"] if x.strip()]
-if "match_mode" not in st.session_state: st.session_state.match_mode = perm_data["match_mode"]
-if "history_logs" not in st.session_state: st.session_state.history_logs = perm_data["history_logs"]
+# 세션 초기화 철벽 방어
+if "MEMBER_DATABASE" not in st.session_state: st.session_state.MEMBER_DATABASE = perm_data.get("MEMBER_DATABASE", {})
+if "attendance_list" not in st.session_state: st.session_state.attendance_list = [str(x).strip() for x in perm_data.get("attendance_list", []) if x and str(x).strip()]
+if "match_mode" not in st.session_state: st.session_state.match_mode = perm_data.get("match_mode", "3파전")
+if "history_logs" not in st.session_state: st.session_state.history_logs = perm_data.get("history_logs", [])
 if "current_teams" not in st.session_state: st.session_state.current_teams = perm_data.get("current_teams", {})
 if "current_q_idx" not in st.session_state: st.session_state.current_q_idx = perm_data.get("current_q_idx", 0)
+if "ai_teams" not in st.session_state: st.session_state.ai_teams = {}
 
-if "ai_teams" not in st.session_state:
-    st.session_state.ai_teams = {}
-
+# [치명적 에러 패치] 배열 길이 오류(ValueError) 완전 차단
 if "edited_score_df" not in st.session_state:
     mode = st.session_state.match_mode
-    quarters = [f"{i}쿼터" for i in range(1, 8 if mode == "2파전" else 10)]
-    st.session_state.edited_score_df = pd.DataFrame(perm_data["score_data_dict"], index=quarters)
+    saved_dict = perm_data.get("score_data_dict", {})
+    try:
+        if saved_dict and isinstance(saved_dict, dict) and len(list(saved_dict.values())[0]) > 0:
+            dict_len = len(list(saved_dict.values())[0])
+            quarters = [f"{i}쿼터" for i in range(1, dict_len + 1)]
+            st.session_state.edited_score_df = pd.DataFrame(saved_dict, index=quarters)
+        else:
+            st.session_state.edited_score_df = get_blank_score_df(mode)
+    except Exception:
+        # 길이가 안 맞거나 에러가 나면 조용히 빈 표로 덮어쓰기
+        st.session_state.edited_score_df = get_blank_score_df(mode)
 
-if "temp_match_type" not in st.session_state:
-    st.session_state.temp_match_type = "블루 vs 레드"
+if "temp_match_type" not in st.session_state: st.session_state.temp_match_type = "블루 vs 레드"
 if "bulk_input_df" not in st.session_state:
     st.session_state.bulk_input_df = pd.DataFrame({
         "이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15, "MMR": [1000] * 15
     })
-if "show_warning" not in st.session_state:
-    st.session_state.show_warning = False
-if "confirm_close" not in st.session_state:
-    st.session_state.confirm_close = False
+if "show_warning" not in st.session_state: st.session_state.show_warning = False
+if "confirm_close" not in st.session_state: st.session_state.confirm_close = False
 
 menu_1 = "1. 명단 및 팀배분"
 menu_2 = "2. 경기 기록실"
@@ -204,12 +218,12 @@ if page == menu_1:
         
     st.markdown("---")
     st.subheader("[2단계] 경기 방식 설정")
-    selected_mode = st.radio("오늘 매치 방식을 골라주세요", ["2파전 (8쿼터)", "3파전 (9쿼터)"], index=0 if st.session_state.match_mode == "2파전" else 1)
+    selected_mode = st.radio("오늘 매치 방식을 골라주세요", ["2파전 (8쿼터)", "3파전 (9쿼터)"], index=0 if "2파전" in st.session_state.match_mode else 1)
     team_options = ["미배정", "레드", "블루"] if "2파전" in selected_mode else ["미배정", "블랙", "레드", "블루"]
 
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
-    st.write("AI 버튼을 누르면 공격/수비 실력 및 **종합 전투력(MMR)**을 분석하여 밸런스가 조율됩니다.")
+    st.write("AI 버튼을 누르면 공격/수비 실력 및 종합 전투력(MMR)을 분석하여 밸런스가 조율됩니다.")
     
     if st.button("AI 자동 밸런스 매칭 가동", use_container_width=True):
         prev_teams = {}
@@ -217,6 +231,14 @@ if page == menu_1:
             last_log = st.session_state.history_logs[-1]
             for p_name, f_info in last_log.get("fines", {}).items():
                 prev_teams[p_name] = f_info.get("team")
+                
+        stats_map = {name: {"MP": 0, "W": 0} for name in st.session_state.MEMBER_DATABASE.keys()}
+        for item in st.session_state.history_logs:
+            for p_name, f_info in item.get("fines", {}).items():
+                if p_name in stats_map:
+                    stats_map[p_name]["MP"] += 1
+                    if f_info.get("rank") == 1:
+                        stats_map[p_name]["W"] += 1
                 
         players = []
         for name in current_att_list:
@@ -227,10 +249,15 @@ if page == menu_1:
                 base_score = float(db_info.get("공격", 0)) + float(db_info.get("수비", 0))
                 mmr_score = int(db_info.get("MMR", 1000))
             
-            # [초지능 AI 패치] 수동 점수(공+수)에 MMR 격차를 가중치로 환산하여 진정한 실력값(effective_score) 창출
-            # 예: MMR이 1040점(2연승)이면 평점 +2.0점 버프 / MMR이 960점(2연패)이면 평점 -2.0점 감점
             effective_score = base_score + ((mmr_score - 1000) * 0.05)
             
+            if name in stats_map:
+                mp = stats_map[name]["MP"]
+                w = stats_map[name]["W"]
+                if mp >= 10:
+                    win_rate = (w / mp) * 100
+                    effective_score += (win_rate - 50) * 0.03 
+                    
             players.append({"name": name, "total": effective_score})
             
         players.sort(key=lambda x: x['total'], reverse=True)
@@ -255,7 +282,7 @@ if page == menu_1:
                     for existing_p in new_teams[t]:
                         m1, m2 = p["name"], existing_p["name"]
                         if m1 in prev_teams and m2 in prev_teams and prev_teams[m1] == prev_teams[m2]:
-                            same_team_penalty += 20.0 # 이전 주 동일팀 회피 극대화
+                            same_team_penalty += 20.0
                             
                 avg_sum = sum(temp_team_sums.values()) / len(teams_keys)
                 variance = sum((s - avg_sum)**2 for s in temp_team_sums.values())
@@ -322,6 +349,7 @@ if page == menu_1:
                     if t_name != "미배정":
                         st.session_state.current_teams[t_name].append({"name": p_name})
                         
+                # 안전한 새 데이터프레임 할당
                 st.session_state.edited_score_df = get_blank_score_df(new_mode)
                 st.session_state.current_q_idx = 0
                 
@@ -356,9 +384,13 @@ elif page == menu_2:
     st.subheader("쿼터 스코어 입력창")
     st.write("저장 시 자동으로 다음 쿼터로 넘어가며, 언제든 박스를 눌러 이전 쿼터를 수정할 수 있습니다.")
     
-    loop_count = 8 if st.session_state.match_mode == "2파전" else 9
+    loop_count = 8 if "2파전" in st.session_state.match_mode else 9
     quarter_options = [f"{i}쿼터" for i in range(1, loop_count + 1)]
     
+    # 쿼터 인덱스가 범위를 벗어나면 안전하게 리셋
+    if st.session_state.current_q_idx >= loop_count:
+        st.session_state.current_q_idx = 0
+        
     selected_q = st.selectbox("기록할 쿼터 선택", quarter_options, index=st.session_state.current_q_idx)
     st.session_state.current_q_idx = quarter_options.index(selected_q)
     
@@ -368,7 +400,7 @@ elif page == menu_2:
     val_black = None
     val_red = None
     
-    if st.session_state.match_mode == "3파전":
+    if "3파전" in st.session_state.match_mode:
         st.write("이번 쿼터 경기팀 선택하기")
         btn_cols = st.columns(3)
         with btn_cols[0]:
@@ -403,7 +435,7 @@ elif page == menu_2:
     if st.button("해당 쿼터 점수 저장하기", use_container_width=True, type="primary"):
         st.session_state.edited_score_df.at[selected_q, "블루"] = val_blue
         st.session_state.edited_score_df.at[selected_q, "레드"] = val_red
-        if st.session_state.match_mode == "3파전":
+        if "3파전" in st.session_state.match_mode:
             st.session_state.edited_score_df.at[selected_q, "블랙"] = val_black
             
         if st.session_state.current_q_idx < loop_count - 1:
@@ -420,14 +452,14 @@ elif page == menu_2:
     display_score_df = display_score_df.fillna("-")
     st.dataframe(display_score_df, use_container_width=True)
 
-    history_keys = ["레드", "블루"] if st.session_state.match_mode == "2파전" else ["레드", "블랙", "블루"]
+    history_keys = ["레드", "블루"] if "2파전" in st.session_state.match_mode else ["레드", "블랙", "블루"]
     history = {t: {"W": 0, "D": 0, "L": 0, "GF": 0, "GA": 0, "GD": 0, "PTS": 0, "MP": 0} for t in history_keys}
 
     for i in range(loop_count):
         row_data = st.session_state.edited_score_df.iloc[i]
         b_val = row_data.get("블루")
         r_val = row_data.get("레드")
-        bl_val = row_data.get("블랙") if st.session_state.match_mode == "3파전" else None
+        bl_val = row_data.get("블랙") if "3파전" in st.session_state.match_mode else None
         
         valid_teams = []
         valid_scores = []
@@ -500,8 +532,7 @@ elif page == menu_2:
                         team_players = [p["name"] for p in st.session_state.current_teams.get(t_name, [])]
                         log_entry["ranks"][f"{rank_num}위"] = f"{t_name}팀 ({', '.join(team_players)})"
                         
-                        # [MMR 및 벌금 로직]
-                        if st.session_state.match_mode == "2파전":
+                        if "2파전" in st.session_state.match_mode:
                             fine_amount = 0 if rank_num == 1 else 2000
                             mmr_change = 20 if rank_num == 1 else -20
                         else:
@@ -512,7 +543,6 @@ elif page == menu_2:
                         for p_name in team_players:
                             log_entry["fines"][p_name] = {"team": t_name, "rank": rank_num, "fine": fine_amount, "mmr_change": mmr_change}
                             
-                            # 정식 회원이면 도감에 MMR 즉시 반영
                             if p_name in st.session_state.MEMBER_DATABASE:
                                 current_mmr = int(st.session_state.MEMBER_DATABASE[p_name].get("MMR", 1000))
                                 st.session_state.MEMBER_DATABASE[p_name]["MMR"] = current_mmr + mmr_change
@@ -552,7 +582,7 @@ elif page == menu_3:
                 ranks_dict = item.get("ranks", {})
                 
                 st.markdown(f"> **[1위 우승]** {ranks_dict.get('1위', '정보 없음')}")
-                if item.get('mode', '3파전') == "3파전":
+                if "3파전" in item.get('mode', '3파전'):
                     st.markdown(f"> **[2위]** {ranks_dict.get('2위', '정보 없음')}")
                     st.markdown(f"> **[3위]** {ranks_dict.get('3위', '정보 없음')}")
                 else:
@@ -593,7 +623,6 @@ elif page == menu_4:
     
     stats_map = {}
     for name, db_info in st.session_state.MEMBER_DATABASE.items():
-        # 도감에서 직접 MMR 점수 추출
         stats_map[name] = {"MP": 0, "W": 0, "total_fine": 0, "MMR": int(db_info.get("MMR", 1000))}
         
     if st.session_state.history_logs:
@@ -624,7 +653,6 @@ elif page == menu_4:
     if df_stats.empty:
         st.info("아직 누적된 전적 데이터가 없습니다.")
     else:
-        # [MMR 랭킹 패치] 무조건 전투력이 높은 사람부터 나열
         df_stats = df_stats.sort_values(by=["전투력(MMR)", "참석"], ascending=[False, False]).reset_index(drop=True)
         df_stats.index = range(1, len(df_stats) + 1)
         df_stats = df_stats.rename_axis("순위")
@@ -697,7 +725,6 @@ else:
     if df_db.empty:
         st.info("현재 도감에 등록된 회원이 없습니다.")
     else:
-        # [도감 정렬 패치] 공+수 총점 기준 가장 잘하는 회원부터 내림차순 정렬
         df_db['총점'] = df_db['공격점수'] + df_db['수비점수']
         df_db = df_db.sort_values(by=['총점', '공격점수'], ascending=[False, False]).drop(columns=['총점'])
         
