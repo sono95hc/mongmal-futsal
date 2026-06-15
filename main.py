@@ -65,11 +65,11 @@ def get_blank_score_df(mode="3파전"):
 def load_permanent_data():
     default_data = {
         "MEMBER_DATABASE": {
-            "손흥민": {"공격": 5.0, "수비": 4.0, "키퍼": 2.0},
-            "이강인": {"공격": 5.0, "수비": 3.0, "키퍼": 2.0},
-            "황희찬": {"공격": 4.0, "수비": 3.0, "키퍼": 1.0},
-            "김민재": {"공격": 2.0, "수비": 5.0, "키퍼": 3.0},
-            "조현우": {"공격": 1.0, "수비": 2.0, "키퍼": 5.0}
+            "손흥민": {"공격": 5.0, "수비": 4.0, "키퍼": 2.0, "MMR": 1000},
+            "이강인": {"공격": 5.0, "수비": 3.0, "키퍼": 2.0, "MMR": 1000},
+            "황희찬": {"공격": 4.0, "수비": 3.0, "키퍼": 1.0, "MMR": 1000},
+            "김민재": {"공격": 2.0, "수비": 5.0, "키퍼": 3.0, "MMR": 1000},
+            "조현우": {"공격": 1.0, "수비": 2.0, "키퍼": 5.0, "MMR": 1000}
         },
         "attendance_list": ["손흥민", "이강인", "황희찬", "김민재", "조현우"],
         "match_mode": "3파전",
@@ -85,6 +85,12 @@ def load_permanent_data():
                 data = json.load(f)
                 
                 if "MEMBER_DATABASE" not in data: data["MEMBER_DATABASE"] = default_data["MEMBER_DATABASE"]
+                
+                # [MMR 패치] 기존 회원 데이터에 MMR이 없으면 1000점으로 싹 다 초기화해서 에러 방지
+                for p_name in data["MEMBER_DATABASE"]:
+                    if "MMR" not in data["MEMBER_DATABASE"][p_name]:
+                        data["MEMBER_DATABASE"][p_name]["MMR"] = 1000
+                        
                 if "attendance_list" not in data: data["attendance_list"] = default_data["attendance_list"]
                 if "match_mode" not in data: data["match_mode"] = "3파전"
                 if "score_data_dict" not in data: data["score_data_dict"] = default_data["score_data_dict"]
@@ -141,7 +147,7 @@ if "temp_match_type" not in st.session_state:
     st.session_state.temp_match_type = "블루 vs 레드"
 if "bulk_input_df" not in st.session_state:
     st.session_state.bulk_input_df = pd.DataFrame({
-        "이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15
+        "이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15, "MMR": [1000] * 15
     })
 if "show_warning" not in st.session_state:
     st.session_state.show_warning = False
@@ -203,44 +209,30 @@ if page == menu_1:
 
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
-    st.write("AI 버튼을 누르면 실력, 이전 매치 전적(승률), 지난주 조합을 종합 분석하여 배분됩니다.")
+    st.write("AI 버튼을 누르면 공격/수비 실력 및 **종합 전투력(MMR)**을 분석하여 밸런스가 조율됩니다.")
     
     if st.button("AI 자동 밸런스 매칭 가동", use_container_width=True):
-        # 1. 지난주 팀 추적 로직
         prev_teams = {}
         if st.session_state.history_logs:
             last_log = st.session_state.history_logs[-1]
             for p_name, f_info in last_log.get("fines", {}).items():
                 prev_teams[p_name] = f_info.get("team")
                 
-        # 2. 통계실 기반 승률 맵핑 (10판 이상인 경우 승률 50% 수렴을 위한 밸런싱)
-        stats_map = {name: {"MP": 0, "W": 0} for name in st.session_state.MEMBER_DATABASE.keys()}
-        for item in st.session_state.history_logs:
-            for p_name, f_info in item.get("fines", {}).items():
-                if p_name in stats_map:
-                    stats_map[p_name]["MP"] += 1
-                    if f_info.get("rank") == 1:
-                        stats_map[p_name]["W"] += 1
-                
         players = []
         for name in current_att_list:
             base_score = 6.0
+            mmr_score = 1000
             if name in st.session_state.MEMBER_DATABASE:
                 db_info = st.session_state.MEMBER_DATABASE[name]
                 base_score = float(db_info.get("공격", 0)) + float(db_info.get("수비", 0))
+                mmr_score = int(db_info.get("MMR", 1000))
             
-            effective_score = base_score
-            # [핵심 로직] 10판 이상 참여자 승률 기반 핸디캡/버프 적용 (±최대 1.5점 가감)
-            if name in stats_map:
-                mp = stats_map[name]["MP"]
-                w = stats_map[name]["W"]
-                if mp >= 10:
-                    win_rate = (w / mp) * 100
-                    effective_score += (win_rate - 50) * 0.03 
-                    
+            # [초지능 AI 패치] 수동 점수(공+수)에 MMR 격차를 가중치로 환산하여 진정한 실력값(effective_score) 창출
+            # 예: MMR이 1040점(2연승)이면 평점 +2.0점 버프 / MMR이 960점(2연패)이면 평점 -2.0점 감점
+            effective_score = base_score + ((mmr_score - 1000) * 0.05)
+            
             players.append({"name": name, "total": effective_score})
             
-        # 평가 점수를 기준으로 내림차순 정렬 후 순차 분배 분산 최적화 연산
         players.sort(key=lambda x: x['total'], reverse=True)
         teams_keys = ["레드", "블루"] if "2파전" in selected_mode else ["블랙", "레드", "블루"]
         new_teams = {t: [] for t in teams_keys}
@@ -263,12 +255,11 @@ if page == menu_1:
                     for existing_p in new_teams[t]:
                         m1, m2 = p["name"], existing_p["name"]
                         if m1 in prev_teams and m2 in prev_teams and prev_teams[m1] == prev_teams[m2]:
-                            same_team_penalty += 15.0 # 지난주 같은 팀 회피 강력 패널티
+                            same_team_penalty += 20.0 # 이전 주 동일팀 회피 극대화
                             
                 avg_sum = sum(temp_team_sums.values()) / len(teams_keys)
                 variance = sum((s - avg_sum)**2 for s in temp_team_sums.values())
                 
-                # 동일팀 패널티와 팀 점수 분산(Variance)을 동시 최소화
                 cost = same_team_penalty + variance
                 if cost < min_cost:
                     min_cost = cost
@@ -481,13 +472,13 @@ elif page == menu_2:
     if st.session_state.current_teams:
         st.markdown("---")
         st.subheader("오늘의 정산 마감 구역")
-        st.write("모든 쿼터 입력이 끝났다면 아래 버튼을 눌러 날짜별 장부에 오늘 전적과 벌금을 저장하세요.")
+        st.write("경기가 끝났다면 아래 버튼을 눌러 승패에 따른 MMR과 벌금을 확정 지으세요.")
         
         if st.button("오늘 경기 정산 및 마감하기", use_container_width=True, type="primary"):
             st.session_state.confirm_close = True
             
         if st.session_state.confirm_close:
-            st.warning("[확인] 정말 오늘 경기를 마감하시겠습니까? (마감 시 3번 메뉴로 데이터가 영구 저장됩니다)")
+            st.warning("[확인] 정말 오늘 경기를 마감하시겠습니까? (마감 시 승패에 따라 MMR 전투력이 변동됩니다)")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("네, 마감합니다", use_container_width=True):
@@ -509,20 +500,27 @@ elif page == menu_2:
                         team_players = [p["name"] for p in st.session_state.current_teams.get(t_name, [])]
                         log_entry["ranks"][f"{rank_num}위"] = f"{t_name}팀 ({', '.join(team_players)})"
                         
+                        # [MMR 및 벌금 로직]
                         if st.session_state.match_mode == "2파전":
                             fine_amount = 0 if rank_num == 1 else 2000
+                            mmr_change = 20 if rank_num == 1 else -20
                         else:
-                            if rank_num == 1: fine_amount = 0
-                            elif rank_num == 2: fine_amount = 1000
-                            else: fine_amount = 2000
+                            if rank_num == 1: fine_amount = 0; mmr_change = 20
+                            elif rank_num == 2: fine_amount = 1000; mmr_change = 0
+                            else: fine_amount = 2000; mmr_change = -20
                             
                         for p_name in team_players:
-                            log_entry["fines"][p_name] = {"team": t_name, "rank": rank_num, "fine": fine_amount}
+                            log_entry["fines"][p_name] = {"team": t_name, "rank": rank_num, "fine": fine_amount, "mmr_change": mmr_change}
+                            
+                            # 정식 회원이면 도감에 MMR 즉시 반영
+                            if p_name in st.session_state.MEMBER_DATABASE:
+                                current_mmr = int(st.session_state.MEMBER_DATABASE[p_name].get("MMR", 1000))
+                                st.session_state.MEMBER_DATABASE[p_name]["MMR"] = current_mmr + mmr_change
                     
                     st.session_state.history_logs.append(log_entry)
                     save_permanent_data()
                     st.session_state.confirm_close = False
-                    st.success("정산 완료. 기록이 안전하게 저장되었습니다.")
+                    st.success("정산 완료. 승률 및 MMR이 장부에 안전하게 기록되었습니다.")
                     st.rerun()
             with c2:
                 if st.button("아니오, 취소", use_container_width=True):
@@ -542,7 +540,7 @@ elif page == menu_2:
 # =========================================================================
 elif page == menu_3:
     st.title("3. 날짜별 기록실")
-    st.write("매주 마감된 경기 결과와 개인별 회비 내역이 누적되는 공간입니다.")
+    st.write("매주 마감된 경기 결과와 개인별 회비 및 MMR 변동 내역입니다.")
     
     if not st.session_state.history_logs:
         st.info("아직 마감된 정산 장부 기록이 없습니다.")
@@ -561,16 +559,20 @@ elif page == menu_3:
                     st.markdown(f"> **[2위]** {ranks_dict.get('2위', '정보 없음')}")
                     
                 st.markdown("---")
-                st.markdown("**세부 회비 정산표**")
+                st.markdown("**세부 회비 & MMR 변동표**")
                 
                 fine_table = []
                 fines_dict = item.get("fines", {})
                 for p_name, f_info in fines_dict.items():
+                    mmr_c = f_info.get('mmr_change', 0)
+                    mmr_str = f"+{mmr_c}" if mmr_c > 0 else str(mmr_c)
+                    
                     fine_table.append({
                         "이름": p_name, 
                         "소속팀": f"{f_info.get('team', '미상')}", 
                         "순위": f"{f_info.get('rank', '-')}위", 
-                        "벌금": f"{f_info.get('fine', 0)}원"
+                        "벌금": f"{f_info.get('fine', 0)}원",
+                        "MMR 증감": mmr_str
                     })
                 if fine_table:
                     st.dataframe(pd.DataFrame(fine_table), use_container_width=True, hide_index=True)
@@ -585,13 +587,14 @@ elif page == menu_3:
 # 4페이지
 # =========================================================================
 elif page == menu_4:
-    st.title("4. 회원별 통계실")
-    st.write("정식 등록 회원의 누적 승률 및 회비 현황입니다.")
-    st.caption("[안내] 5번 메뉴에 등록되지 않은 일일 용병은 자동으로 제외됩니다.")
+    st.title("4. 회원별 통계실 (MMR 랭킹)")
+    st.write("정식 회원의 누적 승률 및 전투력 랭킹보드입니다.")
+    st.caption("[안내] 종합 전투력(MMR)이 가장 높은 사람부터 내림차순 정렬됩니다.")
     
     stats_map = {}
-    for name in st.session_state.MEMBER_DATABASE.keys():
-        stats_map[name] = {"MP": 0, "W": 0, "total_fine": 0}
+    for name, db_info in st.session_state.MEMBER_DATABASE.items():
+        # 도감에서 직접 MMR 점수 추출
+        stats_map[name] = {"MP": 0, "W": 0, "total_fine": 0, "MMR": int(db_info.get("MMR", 1000))}
         
     if st.session_state.history_logs:
         for item in st.session_state.history_logs:
@@ -610,6 +613,7 @@ elif page == menu_4:
         win_rate = (s_data["W"] / s_data["MP"] * 100) if s_data["MP"] > 0 else 0.0
         display_stats.append({
             "회원이름": p_name,
+            "전투력(MMR)": s_data['MMR'],
             "참석": f"{s_data['MP']}주",
             "우승": f"{s_data['W']}회",
             "승률": f"{win_rate:.1f}%",
@@ -620,7 +624,8 @@ elif page == menu_4:
     if df_stats.empty:
         st.info("아직 누적된 전적 데이터가 없습니다.")
     else:
-        df_stats = df_stats.sort_values(by=["우승", "참석"], ascending=[False, False]).reset_index(drop=True)
+        # [MMR 랭킹 패치] 무조건 전투력이 높은 사람부터 나열
+        df_stats = df_stats.sort_values(by=["전투력(MMR)", "참석"], ascending=[False, False]).reset_index(drop=True)
         df_stats.index = range(1, len(df_stats) + 1)
         df_stats = df_stats.rename_axis("순위")
         
@@ -633,12 +638,13 @@ else:
     st.title("5. 회원별 점수 관리실")
     
     st.subheader("신규 회원 대량 복붙 / 등록")
-    st.write("엑셀 데이터를 [이름, 공격, 수비, 키퍼] 순서대로 복사해서 아래 표 첫 칸에 붙여넣기 하세요.")
+    st.write("엑셀 데이터를 [이름, 공격, 수비, 키퍼, MMR] 순서대로 복사해서 아래 표에 붙여넣기 하세요.")
     
     bulk_input_processed = st.session_state.bulk_input_df.copy()
     bulk_input_processed["공격"] = bulk_input_processed["공격"].astype(float)
     bulk_input_processed["수비"] = bulk_input_processed["수비"].astype(float)
     bulk_input_processed["키퍼"] = bulk_input_processed["키퍼"].astype(float)
+    bulk_input_processed["MMR"] = bulk_input_processed["MMR"].astype(int)
 
     grid_bulk = st.data_editor(
         bulk_input_processed, num_rows="fixed", use_container_width=True, hide_index=True,
@@ -646,6 +652,7 @@ else:
             "공격": st.column_config.NumberColumn(format="%.2f"),
             "수비": st.column_config.NumberColumn(format="%.2f"),
             "키퍼": st.column_config.NumberColumn(format="%.2f"),
+            "MMR": st.column_config.NumberColumn(format="%d"),
         }
     )
     st.session_state.bulk_input_df = grid_bulk
@@ -656,12 +663,15 @@ else:
             name = str(row["이름"]).strip()
             if name and name != "None" and name != "":
                 st.session_state.MEMBER_DATABASE[name] = {
-                    "공격": round(float(row["공격"]), 2), "수비": round(float(row["수비"]), 2), "키퍼": round(float(row["키퍼"]), 2)
+                    "공격": round(float(row["공격"]), 2), 
+                    "수비": round(float(row["수비"]), 2), 
+                    "키퍼": round(float(row["키퍼"]), 2),
+                    "MMR": int(row["MMR"])
                 }
                 saved_count += 1
         if saved_count > 0:
             save_permanent_data()
-            st.session_state.bulk_input_df = pd.DataFrame({"이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15})
+            st.session_state.bulk_input_df = pd.DataFrame({"이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15, "MMR": [1000] * 15})
             st.success(f"[성공] 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
             st.rerun()
         else:
@@ -670,23 +680,24 @@ else:
     st.markdown("---")
     
     st.subheader("등록된 도감 수정 및 삭제실")
-    st.write("아래 표에서 데이터를 직접 수정하거나, 행 왼쪽을 누르고 키보드 Delete 키를 눌러 삭제할 수 있습니다.")
+    st.write("데이터를 수정하거나 삭제할 수 있습니다. 수동 점수 합계(공격+수비)가 높은 순서대로 표시됩니다.")
     st.caption("작업 후 아래의 [변경사항 도감에 최종 저장하기] 버튼을 눌러야 장부에 영구 반영됩니다.")
     
     db_list = []
     for name, stats in st.session_state.MEMBER_DATABASE.items():
         db_list.append({
             "이름": name, 
-            "공격점수": round(float(stats["공격"]), 2), 
-            "수비점수": round(float(stats["수비"]), 2), 
-            "키퍼점수": round(float(stats["키퍼"]), 2)
+            "공격점수": round(float(stats.get("공격", 0)), 2), 
+            "수비점수": round(float(stats.get("수비", 0)), 2), 
+            "키퍼점수": round(float(stats.get("키퍼", 0)), 2),
+            "MMR": int(stats.get("MMR", 1000))
         })
     df_db = pd.DataFrame(db_list)
     
     if df_db.empty:
         st.info("현재 도감에 등록된 회원이 없습니다.")
     else:
-        # [도감 정렬 패치] 총점(공격+수비) 기준 내림차순 정렬 적용
+        # [도감 정렬 패치] 공+수 총점 기준 가장 잘하는 회원부터 내림차순 정렬
         df_db['총점'] = df_db['공격점수'] + df_db['수비점수']
         df_db = df_db.sort_values(by=['총점', '공격점수'], ascending=[False, False]).drop(columns=['총점'])
         
@@ -697,6 +708,7 @@ else:
                 "공격점수": st.column_config.NumberColumn(format="%.2f"),
                 "수비점수": st.column_config.NumberColumn(format="%.2f"),
                 "키퍼점수": st.column_config.NumberColumn(format="%.2f"),
+                "MMR": st.column_config.NumberColumn(format="%d"),
             }
         )
         
@@ -708,7 +720,8 @@ else:
                     new_database[name] = {
                         "공격": round(float(row["공격점수"]), 2),
                         "수비": round(float(row["수비점수"]), 2),
-                        "키퍼": round(float(row["키퍼점수"]), 2)
+                        "키퍼": round(float(row["키퍼점수"]), 2),
+                        "MMR": int(row["MMR"])
                     }
             st.session_state.MEMBER_DATABASE = new_database
             save_permanent_data()
