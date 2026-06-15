@@ -5,10 +5,55 @@ import json
 import os
 import itertools
 from datetime import datetime
+import urllib.request
+import urllib.error
+import base64
 
 st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="centered")
 
 DB_FILE = "futsal_data.json"
+
+# [자동화 로직] 깃허브로 장부 자동 쏘기
+def push_to_github(content_str):
+    try:
+        if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
+            return
+            
+        token = st.secrets["GITHUB_TOKEN"]
+        repo = st.secrets["GITHUB_REPO"]
+        path = "futsal_data.json"
+        url = f"https://api.github.com/repos/{repo}/contents/{path}"
+        
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "Streamlit-Auto-Backup"
+        }
+        
+        # 1단계: 기존 장부 파일의 고유번호(SHA) 가져오기
+        req_get = urllib.request.Request(url, headers=headers)
+        sha = ""
+        try:
+            with urllib.request.urlopen(req_get) as response:
+                res_data = json.loads(response.read().decode())
+                sha = res_data.get("sha", "")
+        except urllib.error.URLError:
+            pass 
+            
+        # 2단계: 최신 장부 데이터 덮어쓰기
+        encoded_content = base64.b64encode(content_str.encode('utf-8')).decode('utf-8')
+        payload = {
+            "message": "Auto-update futsal_data.json via Streamlit",
+            "content": encoded_content
+        }
+        if sha:
+            payload["sha"] = sha
+            
+        req_put = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='PUT')
+        with urllib.request.urlopen(req_put) as response:
+            pass
+    except Exception:
+        pass
 
 def get_blank_score_df(mode="3파전"):
     if mode == "2파전":
@@ -69,8 +114,14 @@ def save_permanent_data():
         "current_teams": st.session_state.get("current_teams", {}),
         "current_q_idx": st.session_state.get("current_q_idx", 0)
     }
+    
+    # 1. 서버 내부에 임시 저장
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+        
+    # 2. 깃허브로 영구 백업 쏘기 (초자동화)
+    json_str = json.dumps(data_to_save, ensure_ascii=False, indent=4)
+    push_to_github(json_str)
 
 perm_data = load_permanent_data()
 
@@ -110,7 +161,6 @@ st.sidebar.title("MENU")
 st.sidebar.markdown("---")
 st.sidebar.subheader("관리자 인증")
 
-# 비밀 금고 연동 방식 설정 (세팅 전엔 기본값 0330 자동 매칭)
 try:
     admin_secret_pw = st.secrets["ADMIN_PW"]
 except:
@@ -126,48 +176,6 @@ else:
 
 page = st.sidebar.radio("메뉴를 선택하세요", menu_options)
 st.sidebar.caption("제작자: by홍찬")
-
-
-# --- [관리자 특권] 사이드바 실시간 장부 백업 및 복구 통로 가동 ---
-if is_admin:
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("장부 백업 및 복구")
-    
-    current_db_state = {
-        "MEMBER_DATABASE": st.session_state.MEMBER_DATABASE,
-        "attendance_list": st.session_state.attendance_list,
-        "match_mode": st.session_state.match_mode,
-        "score_data_dict": st.session_state.edited_score_df.to_dict(orient="list"),
-        "history_logs": st.session_state.history_logs,
-        "current_teams": st.session_state.current_teams,
-        "current_q_idx": st.session_state.current_q_idx
-    }
-    backup_string = json.dumps(current_db_state, ensure_ascii=False)
-    st.sidebar.text_area("텍스트 백업 (전체 복사 후 카톡 보관)", value=backup_string, height=70)
-    
-    restore_input = st.sidebar.text_area("장부 복구하기 (백업본 붙여넣기)", value="", placeholder="여기에 백업 텍스트 주르륵 입력")
-    if st.sidebar.button("장부 복구 실행", use_container_width=True):
-        if restore_input.strip():
-            try:
-                restored_data = json.loads(restore_input)
-                st.session_state.MEMBER_DATABASE = restored_data["MEMBER_DATABASE"]
-                st.session_state.attendance_list = restored_data["attendance_list"]
-                st.session_state.match_mode = restored_data["match_mode"]
-                st.session_state.history_logs = restored_data["history_logs"]
-                st.session_state.current_teams = restored_data["current_teams"]
-                st.session_state.current_q_idx = restored_data["current_q_idx"]
-                
-                m_mode = restored_data["match_mode"]
-                q_len = len(restored_data["score_data_dict"]["블루"])
-                quarters_list = [f"{i}쿼터" for i in range(1, q_len + 1)]
-                st.session_state.edited_score_df = pd.DataFrame(restored_data["score_data_dict"], index=quarters_list)
-                
-                save_permanent_data()
-                st.sidebar.success("정산 장부가 완벽하게 복구되었습니다.")
-                st.rerun()
-            except:
-                st.sidebar.error("올바르지 않은 백업 양식입니다.")
-
 
 # =========================================================================
 # 1페이지
@@ -281,7 +289,7 @@ if page == menu_1:
         st.session_state.show_warning = True
 
     if st.session_state.show_warning:
-        st.warning("주의: 팀을 새로 확정하면 현재 경기 기록실의 점수가 모두 초기화됩니다. 진행하시겠습니까?")
+        st.warning("[주의] 팀을 새로 확정하면 현재 경기 기록실의 점수가 모두 초기화됩니다. 진행하시겠습니까?")
         
         c1, c2 = st.columns(2)
         with c1:
@@ -307,7 +315,7 @@ if page == menu_1:
                 st.rerun()
 
     if st.session_state.current_teams and not st.session_state.show_warning:
-        st.success("매칭이 성공적으로 확정되었습니다.")
+        st.success("[알림] 매칭이 성공적으로 확정되었습니다.")
         
         katalk_text = f"[풋살 팀 매칭 결과 ({st.session_state.match_mode})]\n"
         for t_name, members in st.session_state.current_teams.items():
@@ -451,7 +459,7 @@ elif page == menu_2:
             st.session_state.confirm_close = True
             
         if st.session_state.confirm_close:
-            st.warning("정말 오늘 경기를 마감하시겠습니까? (마감 시 3번 메뉴로 데이터가 저장됩니다)")
+            st.warning("[확인] 정말 오늘 경기를 마감하시겠습니까? (마감 시 3번 메뉴로 데이터가 영구 저장됩니다)")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("네, 마감합니다", use_container_width=True):
@@ -623,7 +631,7 @@ else:
         if saved_count > 0:
             save_permanent_data()
             st.session_state.bulk_input_df = pd.DataFrame({"이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15})
-            st.success(f"성공. 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
+            st.success(f"[성공] 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
             st.rerun()
         else:
             st.error("입력된 이름이 없습니다.")
@@ -669,5 +677,5 @@ else:
                     }
             st.session_state.MEMBER_DATABASE = new_database
             save_permanent_data()
-            st.success("도감의 수정 변경사항이 장부에 영구 저장되었습니다.")
+            st.success("[성공] 도감의 수정 변경사항이 장부에 영구 저장되었습니다.")
             st.rerun()
