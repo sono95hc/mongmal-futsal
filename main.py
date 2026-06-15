@@ -4,7 +4,7 @@ import pandas as pd
 import json
 import os
 import itertools
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.request
 import urllib.error
 import base64
@@ -13,7 +13,7 @@ st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="
 
 DB_FILE = "futsal_data.json"
 
-# [보안/규격 완벽 수정] 깃허브 백업 엔진 원천 차단 오류 해결
+# [보안/규격 완벽 수정] 깃허브 백업 엔진
 def push_to_github(content_str):
     try:
         if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
@@ -24,7 +24,6 @@ def push_to_github(content_str):
         path = "futsal_data.json"
         url = f"https://api.github.com/repos/{repo}/contents/{path}"
         
-        # Accept와 Content-Type 규격을 최신 깃허브 보안 기준에 맞게 완벽 명시
         headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
@@ -32,7 +31,6 @@ def push_to_github(content_str):
             "User-Agent": "Streamlit-Auto-Backup"
         }
         
-        # 1단계: 기존 파일 고유번호(SHA) 조회
         req_get = urllib.request.Request(url, headers=headers)
         sha = ""
         try:
@@ -42,7 +40,6 @@ def push_to_github(content_str):
         except urllib.error.URLError:
             pass 
             
-        # 2단계: 파일 암호화 후 강제 업데이트
         encoded_content = base64.b64encode(content_str.encode('utf-8')).decode('utf-8')
         payload = {
             "message": "Auto-update futsal_data.json via Streamlit",
@@ -117,7 +114,6 @@ def save_permanent_data():
         "current_q_idx": st.session_state.get("current_q_idx", 0)
     }
     
-    # 내부 메모리 동기화 및 깃허브 동시 무조건 강제 전송
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
         
@@ -162,7 +158,6 @@ st.sidebar.title("MENU")
 st.sidebar.markdown("---")
 st.sidebar.subheader("관리자 인증")
 
-# 비밀번호는 스트림릿 secrets 세팅 전까진 0330 자동 동작 보장
 try:
     admin_secret_pw = st.secrets["ADMIN_PW"]
 except:
@@ -191,7 +186,12 @@ if page == menu_1:
     current_att_str = " ".join([x for x in st.session_state.attendance_list if x])
     att_input = st.text_area("명단 입력 (예: 손흥민 이강인 황희찬)", value=current_att_str, height=100)
     
-    current_att_list = [x.strip() for x in att_input.split() if x.strip()]
+    raw_att_list = [x.strip() for x in att_input.split() if x.strip()]
+    current_att_list = []
+    for x in raw_att_list:
+        if x not in current_att_list:
+            current_att_list.append(x)
+            
     if current_att_list != st.session_state.attendance_list:
         st.session_state.attendance_list = current_att_list
         save_permanent_data()
@@ -203,57 +203,80 @@ if page == menu_1:
 
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
-    st.write("AI 버튼을 누르면 실력과 지난주 팀 조합을 분석하여 자동 배분됩니다.")
+    st.write("AI 버튼을 누르면 실력, 이전 매치 전적(승률), 지난주 조합을 종합 분석하여 배분됩니다.")
     
     if st.button("AI 자동 밸런스 매칭 가동", use_container_width=True):
+        # 1. 지난주 팀 추적 로직
         prev_teams = {}
         if st.session_state.history_logs:
             last_log = st.session_state.history_logs[-1]
             for p_name, f_info in last_log.get("fines", {}).items():
                 prev_teams[p_name] = f_info.get("team")
                 
+        # 2. 통계실 기반 승률 맵핑 (10판 이상인 경우 승률 50% 수렴을 위한 밸런싱)
+        stats_map = {name: {"MP": 0, "W": 0} for name in st.session_state.MEMBER_DATABASE.keys()}
+        for item in st.session_state.history_logs:
+            for p_name, f_info in item.get("fines", {}).items():
+                if p_name in stats_map:
+                    stats_map[p_name]["MP"] += 1
+                    if f_info.get("rank") == 1:
+                        stats_map[p_name]["W"] += 1
+                
         players = []
         for name in current_att_list:
+            base_score = 6.0
             if name in st.session_state.MEMBER_DATABASE:
                 db_info = st.session_state.MEMBER_DATABASE[name]
-                total_score = float(db_info.get("공격", 0)) + float(db_info.get("수비", 0))
-            else:
-                total_score = 6.0
-            players.append({"name": name, "total": total_score})
+                base_score = float(db_info.get("공격", 0)) + float(db_info.get("수비", 0))
             
+            effective_score = base_score
+            # [핵심 로직] 10판 이상 참여자 승률 기반 핸디캡/버프 적용 (±최대 1.5점 가감)
+            if name in stats_map:
+                mp = stats_map[name]["MP"]
+                w = stats_map[name]["W"]
+                if mp >= 10:
+                    win_rate = (w / mp) * 100
+                    effective_score += (win_rate - 50) * 0.03 
+                    
+            players.append({"name": name, "total": effective_score})
+            
+        # 평가 점수를 기준으로 내림차순 정렬 후 순차 분배 분산 최적화 연산
         players.sort(key=lambda x: x['total'], reverse=True)
         teams_keys = ["레드", "블루"] if "2파전" in selected_mode else ["블랙", "레드", "블루"]
         new_teams = {t: [] for t in teams_keys}
+        team_sums = {t: 0.0 for t in teams_keys}
         
         for i in range(0, len(players), len(teams_keys)):
             chunk = players[i:i+len(teams_keys)]
             best_perm = None
-            min_penalty = float('inf')
+            min_cost = float('inf')
             
             perms = list(itertools.permutations(teams_keys, len(chunk)))
             random.shuffle(perms)
             
             for perm in perms:
-                current_penalty = 0
-                temp_teams = {t: list(new_teams[t]) for t in teams_keys}
+                same_team_penalty = 0
+                temp_team_sums = {t: team_sums[t] for t in teams_keys}
                 
                 for p, t in zip(chunk, perm):
-                    temp_teams[t].append(p)
-                    
-                for t_name, members in temp_teams.items():
-                    for idx1 in range(len(members)):
-                        for idx2 in range(idx1+1, len(members)):
-                            m1 = members[idx1]["name"]
-                            m2 = members[idx2]["name"]
-                            if m1 in prev_teams and m2 in prev_teams and prev_teams[m1] == prev_teams[m2]:
-                                current_penalty += (members[idx1]["total"] + members[idx2]["total"])
-                                
-                if current_penalty < min_penalty:
-                    min_penalty = current_penalty
+                    temp_team_sums[t] += p["total"]
+                    for existing_p in new_teams[t]:
+                        m1, m2 = p["name"], existing_p["name"]
+                        if m1 in prev_teams and m2 in prev_teams and prev_teams[m1] == prev_teams[m2]:
+                            same_team_penalty += 15.0 # 지난주 같은 팀 회피 강력 패널티
+                            
+                avg_sum = sum(temp_team_sums.values()) / len(teams_keys)
+                variance = sum((s - avg_sum)**2 for s in temp_team_sums.values())
+                
+                # 동일팀 패널티와 팀 점수 분산(Variance)을 동시 최소화
+                cost = same_team_penalty + variance
+                if cost < min_cost:
+                    min_cost = cost
                     best_perm = perm
                     
             for p, t in zip(chunk, best_perm):
                 new_teams[t].append(p)
+                team_sums[t] += p["total"]
                 
         assigned_dict = {}
         for t_name, members in new_teams.items():
@@ -261,7 +284,6 @@ if page == menu_1:
                 assigned_dict[p["name"]] = t_name
                 
         st.session_state.ai_teams = assigned_dict
-        
         for p_name, t_name in assigned_dict.items():
             st.session_state[f"sel_{p_name}"] = t_name
             
@@ -278,8 +300,10 @@ if page == menu_1:
                 default_team = "미배정"
             
             with col:
-                # [강제 동기화 보강] 수동 선택 상태 캐시 메모리 꼬임 제어 방어막
-                if f"sel_{player_name}" not in st.session_state:
+                if f"sel_{player_name}" in st.session_state:
+                    if st.session_state[f"sel_{player_name}"] not in team_options:
+                        st.session_state[f"sel_{player_name}"] = "미배정"
+                else:
                     st.session_state[f"sel_{player_name}"] = default_team
                     
                 final_team_selections[player_name] = st.selectbox(
@@ -289,7 +313,7 @@ if page == menu_1:
                 )
 
     st.markdown("---")
-    if st.button("이編成대로 팀 확정하기 (점수판 초기화)", use_container_width=True, type="primary"):
+    if st.button("이 편성표대로 팀 확정하기 (점수판 초기화)", use_container_width=True, type="primary"):
         st.session_state.show_warning = True
 
     if st.session_state.show_warning:
@@ -467,7 +491,10 @@ elif page == menu_2:
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("네, 마감합니다", use_container_width=True):
-                    today_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    now_utc = datetime.utcnow()
+                    now_kst = now_utc + timedelta(hours=9)
+                    today_str = now_kst.strftime("%Y-%m-%d %H:%M")
+                    
                     ranked_teams = sort_df["팀"].tolist()
                     
                     log_entry = {
@@ -659,6 +686,10 @@ else:
     if df_db.empty:
         st.info("현재 도감에 등록된 회원이 없습니다.")
     else:
+        # [도감 정렬 패치] 총점(공격+수비) 기준 내림차순 정렬 적용
+        df_db['총점'] = df_db['공격점수'] + df_db['수비점수']
+        df_db = df_db.sort_values(by=['총점', '공격점수'], ascending=[False, False]).drop(columns=['총점'])
+        
         grid_master = st.data_editor(
             df_db, num_rows="dynamic", use_container_width=True, hide_index=True,
             column_config={
