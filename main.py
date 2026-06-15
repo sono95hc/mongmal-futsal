@@ -13,7 +13,7 @@ st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="
 
 DB_FILE = "futsal_data.json"
 
-# [자동화 로직] 깃허브로 장부 자동 쏘기
+# [자동화 로직] 깃허브로 장부 자동 쏘기 (Content-Type 버그 완벽 수정 완료)
 def push_to_github(content_str):
     try:
         if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
@@ -24,9 +24,11 @@ def push_to_github(content_str):
         path = "futsal_data.json"
         url = f"https://api.github.com/repos/{repo}/contents/{path}"
         
+        # [핵심 패치] Content-Type을 정확히 명시하여 깃허브 서버 거절 차단
         headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
             "User-Agent": "Streamlit-Auto-Backup"
         }
         
@@ -115,11 +117,9 @@ def save_permanent_data():
         "current_q_idx": st.session_state.get("current_q_idx", 0)
     }
     
-    # 1. 서버 내부에 임시 저장
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
         
-    # 2. 깃허브로 영구 백업 쏘기 (초자동화)
     json_str = json.dumps(data_to_save, ensure_ascii=False, indent=4)
     push_to_github(json_str)
 
@@ -274,13 +274,15 @@ if page == menu_1:
             default_team = st.session_state.ai_teams.get(player_name, "미배정")
             if default_team not in team_options:
                 default_team = "미배정"
-            default_idx = team_options.index(default_team)
             
             with col:
+                # [안전성 패치] 억지 index 충돌을 막기 위해 렌더링 시점에 세션 상태값을 직접 바인딩
+                if f"sel_{player_name}" not in st.session_state:
+                    st.session_state[f"sel_{player_name}"] = default_team
+                    
                 final_team_selections[player_name] = st.selectbox(
                     f"{player_name}", 
                     options=team_options, 
-                    index=default_idx, 
                     key=f"sel_{player_name}"
                 )
 
