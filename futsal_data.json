@@ -131,21 +131,9 @@
         "장영호",
         "최홍찬"
     ],
-    "match_mode": "3파전",
+    "match_mode": "2파전",
     "score_data_dict": {
         "블루": [
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-        ],
-        "블랙": [
-            null,
             null,
             null,
             null,
@@ -156,7 +144,6 @@
             null
         ],
         "레드": [
-            null,
             null,
             null,
             null,
@@ -169,25 +156,47 @@
     },
     "history_logs": [],
     "current_teams": {
-        "블랙": [
-            {
-                "name": "황희찬"
-            }
-        ],
         "레드": [
             {
-                "name": "손흥민"
+                "name": "신병재"
             },
             {
-                "name": "김민재"
+                "name": "이충수"
+            },
+            {
+                "name": "정대영"
+            },
+            {
+                "name": "지동일"
+            },
+            {
+                "name": "이현진"
+            },
+            {
+                "name": "장영호"
+            },
+            {
+                "name": "최홍찬"
             }
         ],
         "블루": [
             {
-                "name": "이강인"
+                "name": "김우주"
             },
             {
-                "name": "조현우"
+                "name": "김현준"
+            },
+            {
+                "name": "이예찬"
+            },
+            {
+                "name": "용성원"
+            },
+            {
+                "name": "최덕규"
+            },
+            {
+                "name": "유사무엘"
             }
         ]
     },
