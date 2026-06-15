@@ -1,0 +1,97 @@
+{
+    "MEMBER_DATABASE": {
+        "손흥민": {
+            "공격": 5.0,
+            "수비": 4.0,
+            "키퍼": 2.0
+        },
+        "이강인": {
+            "공격": 5.0,
+            "수비": 3.0,
+            "키퍼": 2.0
+        },
+        "황희찬": {
+            "공격": 4.0,
+            "수비": 3.0,
+            "키퍼": 1.0
+        },
+        "김민재": {
+            "공격": 2.0,
+            "수비": 5.0,
+            "키퍼": 3.0
+        },
+        "조현우": {
+            "공격": 1.0,
+            "수비": 2.0,
+            "키퍼": 5.0
+        }
+    },
+    "attendance_list": [
+        "손흥민",
+        "이강인",
+        "황희찬",
+        "김민재",
+        "조현우"
+    ],
+    "match_mode": "3파전",
+    "score_data_dict": {
+        "블루": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ],
+        "블랙": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ],
+        "레드": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ]
+    },
+    "history_logs": [],
+    "current_teams": {
+        "블랙": [
+            {
+                "name": "황희찬"
+            }
+        ],
+        "레드": [
+            {
+                "name": "손흥민"
+            },
+            {
+                "name": "김민재"
+            }
+        ],
+        "블루": [
+            {
+                "name": "이강인"
+            },
+            {
+                "name": "조현우"
+            }
+        ]
+    },
+    "current_q_idx": 0
+}
