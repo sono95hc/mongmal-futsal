@@ -30,7 +30,9 @@ def load_permanent_data():
         "attendance_list": ["손흥민", "이강인", "황희찬", "김민재", "조현우"],
         "match_mode": "3파전",
         "score_data_dict": get_blank_score_df("3파전").to_dict(orient="list"),
-        "history_logs": []
+        "history_logs": [],
+        "current_teams": {},
+        "current_q_idx": 0
     }
 
     if os.path.exists(DB_FILE):
@@ -38,16 +40,13 @@ def load_permanent_data():
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 
-                if "MEMBER_DATABASE" not in data:
-                    data["MEMBER_DATABASE"] = default_data["MEMBER_DATABASE"]
-                if "attendance_list" not in data:
-                    data["attendance_list"] = default_data["attendance_list"]
-                if "match_mode" not in data:
-                    data["match_mode"] = "3파전"
-                if "score_data_dict" not in data:
-                    data["score_data_dict"] = default_data["score_data_dict"]
-                if "history_logs" not in data:
-                    data["history_logs"] = []
+                if "MEMBER_DATABASE" not in data: data["MEMBER_DATABASE"] = default_data["MEMBER_DATABASE"]
+                if "attendance_list" not in data: data["attendance_list"] = default_data["attendance_list"]
+                if "match_mode" not in data: data["match_mode"] = "3파전"
+                if "score_data_dict" not in data: data["score_data_dict"] = default_data["score_data_dict"]
+                if "history_logs" not in data: data["history_logs"] = []
+                if "current_teams" not in data: data["current_teams"] = {}
+                if "current_q_idx" not in data: data["current_q_idx"] = 0
                     
                 if "경기팀" in data["score_data_dict"]:
                     del data["score_data_dict"]["경기팀"]
@@ -66,21 +65,22 @@ def save_permanent_data():
         "attendance_list": clean_attendance,
         "match_mode": st.session_state.match_mode,
         "score_data_dict": score_dict,
-        "history_logs": st.session_state.get("history_logs", [])
+        "history_logs": st.session_state.get("history_logs", []),
+        "current_teams": st.session_state.get("current_teams", {}),
+        "current_q_idx": st.session_state.get("current_q_idx", 0)
     }
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
 perm_data = load_permanent_data()
 
-if "MEMBER_DATABASE" not in st.session_state:
-    st.session_state.MEMBER_DATABASE = perm_data["MEMBER_DATABASE"]
-if "attendance_list" not in st.session_state:
-    st.session_state.attendance_list = [x for x in perm_data["attendance_list"] if x.strip()]
-if "match_mode" not in st.session_state:
-    st.session_state.match_mode = perm_data["match_mode"]
-if "history_logs" not in st.session_state:
-    st.session_state.history_logs = perm_data["history_logs"]
+if "MEMBER_DATABASE" not in st.session_state: st.session_state.MEMBER_DATABASE = perm_data["MEMBER_DATABASE"]
+if "attendance_list" not in st.session_state: st.session_state.attendance_list = [x for x in perm_data["attendance_list"] if x.strip()]
+if "match_mode" not in st.session_state: st.session_state.match_mode = perm_data["match_mode"]
+if "history_logs" not in st.session_state: st.session_state.history_logs = perm_data["history_logs"]
+if "current_teams" not in st.session_state: st.session_state.current_teams = perm_data.get("current_teams", {})
+if "current_q_idx" not in st.session_state: st.session_state.current_q_idx = perm_data.get("current_q_idx", 0)
+
 if "ai_teams" not in st.session_state:
     st.session_state.ai_teams = {}
 
@@ -89,8 +89,6 @@ if "edited_score_df" not in st.session_state:
     quarters = [f"{i}쿼터" for i in range(1, 8 if mode == "2파전" else 10)]
     st.session_state.edited_score_df = pd.DataFrame(perm_data["score_data_dict"], index=quarters)
 
-if "current_teams" not in st.session_state:
-    st.session_state.current_teams = {}
 if "temp_match_type" not in st.session_state:
     st.session_state.temp_match_type = "블루 vs 레드"
 if "bulk_input_df" not in st.session_state:
@@ -101,8 +99,6 @@ if "show_warning" not in st.session_state:
     st.session_state.show_warning = False
 if "confirm_close" not in st.session_state:
     st.session_state.confirm_close = False
-if "current_q_idx" not in st.session_state:
-    st.session_state.current_q_idx = 0
 
 menu_1 = "1. 명단 및 팀배분"
 menu_2 = "2. 경기 기록실"
@@ -114,10 +110,11 @@ st.sidebar.title("MENU")
 st.sidebar.markdown("---")
 st.sidebar.subheader("관리자 인증")
 
+# 비밀 금고 연동 방식 설정 (세팅 전엔 기본값 0330 자동 매칭)
 try:
     admin_secret_pw = st.secrets["ADMIN_PW"]
 except:
-    admin_secret_pw = "secret_not_set_in_streamlit"
+    admin_secret_pw = "0330"
 
 admin_password = st.sidebar.text_input("비밀번호 입력", type="password")
 is_admin = (admin_password == admin_secret_pw) if admin_password else False
@@ -129,6 +126,47 @@ else:
 
 page = st.sidebar.radio("메뉴를 선택하세요", menu_options)
 st.sidebar.caption("제작자: by홍찬")
+
+
+# --- [관리자 특권] 사이드바 실시간 장부 백업 및 복구 통로 가동 ---
+if is_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("장부 백업 및 복구")
+    
+    current_db_state = {
+        "MEMBER_DATABASE": st.session_state.MEMBER_DATABASE,
+        "attendance_list": st.session_state.attendance_list,
+        "match_mode": st.session_state.match_mode,
+        "score_data_dict": st.session_state.edited_score_df.to_dict(orient="list"),
+        "history_logs": st.session_state.history_logs,
+        "current_teams": st.session_state.current_teams,
+        "current_q_idx": st.session_state.current_q_idx
+    }
+    backup_string = json.dumps(current_db_state, ensure_ascii=False)
+    st.sidebar.text_area("텍스트 백업 (전체 복사 후 카톡 보관)", value=backup_string, height=70)
+    
+    restore_input = st.sidebar.text_area("장부 복구하기 (백업본 붙여넣기)", value="", placeholder="여기에 백업 텍스트 주르륵 입력")
+    if st.sidebar.button("장부 복구 실행", use_container_width=True):
+        if restore_input.strip():
+            try:
+                restored_data = json.loads(restore_input)
+                st.session_state.MEMBER_DATABASE = restored_data["MEMBER_DATABASE"]
+                st.session_state.attendance_list = restored_data["attendance_list"]
+                st.session_state.match_mode = restored_data["match_mode"]
+                st.session_state.history_logs = restored_data["history_logs"]
+                st.session_state.current_teams = restored_data["current_teams"]
+                st.session_state.current_q_idx = restored_data["current_q_idx"]
+                
+                m_mode = restored_data["match_mode"]
+                q_len = len(restored_data["score_data_dict"]["블루"])
+                quarters_list = [f"{i}쿼터" for i in range(1, q_len + 1)]
+                st.session_state.edited_score_df = pd.DataFrame(restored_data["score_data_dict"], index=quarters_list)
+                
+                save_permanent_data()
+                st.sidebar.success("정산 장부가 완벽하게 복구되었습니다.")
+                st.rerun()
+            except:
+                st.sidebar.error("올바르지 않은 백업 양식입니다.")
 
 
 # =========================================================================
@@ -243,7 +281,7 @@ if page == menu_1:
         st.session_state.show_warning = True
 
     if st.session_state.show_warning:
-        st.warning("[주의] 팀을 새로 확정하면 현재 경기 기록실의 점수가 모두 초기화됩니다. 진행하시겠습니까?")
+        st.warning("주의: 팀을 새로 확정하면 현재 경기 기록실의 점수가 모두 초기화됩니다. 진행하시겠습니까?")
         
         c1, c2 = st.columns(2)
         with c1:
@@ -269,7 +307,7 @@ if page == menu_1:
                 st.rerun()
 
     if st.session_state.current_teams and not st.session_state.show_warning:
-        st.success("[알림] 매칭이 성공적으로 확정되었습니다.")
+        st.success("매칭이 성공적으로 확정되었습니다.")
         
         katalk_text = f"[풋살 팀 매칭 결과 ({st.session_state.match_mode})]\n"
         for t_name, members in st.session_state.current_teams.items():
@@ -413,7 +451,7 @@ elif page == menu_2:
             st.session_state.confirm_close = True
             
         if st.session_state.confirm_close:
-            st.warning("[확인] 정말 오늘 경기를 마감하시겠습니까? (마감 시 3번 메뉴로 데이터가 영구 저장됩니다)")
+            st.warning("정말 오늘 경기를 마감하시겠습니까? (마감 시 3번 메뉴로 데이터가 저장됩니다)")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("네, 마감합니다", use_container_width=True):
@@ -585,7 +623,7 @@ else:
         if saved_count > 0:
             save_permanent_data()
             st.session_state.bulk_input_df = pd.DataFrame({"이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15})
-            st.success(f"[성공] 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
+            st.success(f"성공. 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
             st.rerun()
         else:
             st.error("입력된 이름이 없습니다.")
@@ -631,5 +669,5 @@ else:
                     }
             st.session_state.MEMBER_DATABASE = new_database
             save_permanent_data()
-            st.success("[성공] 도감의 수정 변경사항이 장부에 영구 저장되었습니다.")
+            st.success("도감의 수정 변경사항이 장부에 영구 저장되었습니다.")
             st.rerun()
