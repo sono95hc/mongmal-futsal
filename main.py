@@ -106,7 +106,6 @@ def load_permanent_data():
     return default_data
 
 def save_permanent_data():
-    # [치명적 에러 패치] 세션이 아직 준비되지 않았을 때 튕기는 현상 완벽 방어
     try:
         score_dict = st.session_state.edited_score_df.to_dict(orient="list")
     except:
@@ -136,7 +135,6 @@ def save_permanent_data():
 
 perm_data = load_permanent_data()
 
-# 세션 초기화 철벽 방어
 if "MEMBER_DATABASE" not in st.session_state: st.session_state.MEMBER_DATABASE = perm_data.get("MEMBER_DATABASE", {})
 if "attendance_list" not in st.session_state: st.session_state.attendance_list = [str(x).strip() for x in perm_data.get("attendance_list", []) if x and str(x).strip()]
 if "match_mode" not in st.session_state: st.session_state.match_mode = perm_data.get("match_mode", "3파전")
@@ -145,7 +143,6 @@ if "current_teams" not in st.session_state: st.session_state.current_teams = per
 if "current_q_idx" not in st.session_state: st.session_state.current_q_idx = perm_data.get("current_q_idx", 0)
 if "ai_teams" not in st.session_state: st.session_state.ai_teams = {}
 
-# [치명적 에러 패치] 배열 길이 오류(ValueError) 완전 차단
 if "edited_score_df" not in st.session_state:
     mode = st.session_state.match_mode
     saved_dict = perm_data.get("score_data_dict", {})
@@ -157,7 +154,6 @@ if "edited_score_df" not in st.session_state:
         else:
             st.session_state.edited_score_df = get_blank_score_df(mode)
     except Exception:
-        # 길이가 안 맞거나 에러가 나면 조용히 빈 표로 덮어쓰기
         st.session_state.edited_score_df = get_blank_score_df(mode)
 
 if "temp_match_type" not in st.session_state: st.session_state.temp_match_type = "블루 vs 레드"
@@ -224,8 +220,15 @@ if page == menu_1:
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
     st.write("AI 버튼을 누르면 공격/수비 실력 및 종합 전투력(MMR)을 분석하여 밸런스가 조율됩니다.")
+    st.caption("※ 꼼수 방지: 명단이 바뀌지 않는 한 하루 동안 같은 AI 결과가 나옵니다.")
     
     if st.button("AI 자동 밸런스 매칭 가동", use_container_width=True):
+        
+        now_kst = datetime.utcnow() + timedelta(hours=9)
+        today_date_str = now_kst.strftime("%Y-%m-%d")
+        roster_str = "".join(sorted(current_att_list))
+        random.seed(today_date_str + roster_str)
+        
         prev_teams = {}
         if st.session_state.history_logs:
             last_log = st.session_state.history_logs[-1]
@@ -305,6 +308,7 @@ if page == menu_1:
         for p_name, t_name in assigned_dict.items():
             st.session_state[f"sel_{p_name}"] = t_name
             
+        random.seed()
         st.rerun()
 
     final_team_selections = {}
@@ -349,7 +353,6 @@ if page == menu_1:
                     if t_name != "미배정":
                         st.session_state.current_teams[t_name].append({"name": p_name})
                         
-                # 안전한 새 데이터프레임 할당
                 st.session_state.edited_score_df = get_blank_score_df(new_mode)
                 st.session_state.current_q_idx = 0
                 
@@ -387,7 +390,6 @@ elif page == menu_2:
     loop_count = 8 if "2파전" in st.session_state.match_mode else 9
     quarter_options = [f"{i}쿼터" for i in range(1, loop_count + 1)]
     
-    # 쿼터 인덱스가 범위를 벗어나면 안전하게 리셋
     if st.session_state.current_q_idx >= loop_count:
         st.session_state.current_q_idx = 0
         
@@ -608,7 +610,15 @@ elif page == menu_3:
                     st.dataframe(pd.DataFrame(fine_table), use_container_width=True, hide_index=True)
 
                 if is_admin:
+                    # [마지막 결함 해결] 기록 삭제 시 부여됐던 MMR 롤백(원상복구) 기능 추가
                     if st.button("이 기록 삭제하기 (관리자 전용)", key=f"del_log_{real_idx}"):
+                        item_to_delete = st.session_state.history_logs[real_idx]
+                        for p_name, f_info in item_to_delete.get("fines", {}).items():
+                            if p_name in st.session_state.MEMBER_DATABASE:
+                                rollback_mmr = f_info.get("mmr_change", 0)
+                                current_mmr = st.session_state.MEMBER_DATABASE[p_name].get("MMR", 1000)
+                                st.session_state.MEMBER_DATABASE[p_name]["MMR"] = current_mmr - rollback_mmr
+                                
                         st.session_state.history_logs.pop(real_idx)
                         save_permanent_data()
                         st.rerun()
