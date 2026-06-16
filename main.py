@@ -13,6 +13,19 @@ st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="
 
 DB_FILE = "futsal_data.json"
 
+# --- [안전 필터 함수 추가] 빈칸이나 문자가 들어와도 터지지 않게 방어 ---
+def safe_float(val, default=3.0):
+    try:
+        return round(float(val), 2)
+    except:
+        return default
+
+def safe_int(val, default=1000):
+    try:
+        return int(float(val))
+    except:
+        return default
+
 def push_to_github(content_str):
     try:
         if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
@@ -75,7 +88,8 @@ def load_permanent_data():
         "score_data_dict": get_blank_score_df("3파전").to_dict(orient="list"),
         "history_logs": [],
         "current_teams": {},
-        "current_q_idx": 0
+        "current_q_idx": 0,
+        "settlement_katalk_text": ""
     }
 
     if os.path.exists(DB_FILE):
@@ -95,6 +109,7 @@ def load_permanent_data():
                 if "history_logs" not in data: data["history_logs"] = []
                 if "current_teams" not in data: data["current_teams"] = {}
                 if "current_q_idx" not in data: data["current_q_idx"] = 0
+                if "settlement_katalk_text" not in data: data["settlement_katalk_text"] = ""
                     
                 if "경기팀" in data["score_data_dict"]:
                     del data["score_data_dict"]["경기팀"]
@@ -121,7 +136,8 @@ def save_permanent_data():
         "score_data_dict": score_dict,
         "history_logs": st.session_state.get("history_logs", []),
         "current_teams": st.session_state.get("current_teams", {}),
-        "current_q_idx": st.session_state.get("current_q_idx", 0)
+        "current_q_idx": st.session_state.get("current_q_idx", 0),
+        "settlement_katalk_text": st.session_state.get("settlement_katalk_text", "")
     }
     
     try:
@@ -141,6 +157,7 @@ if "match_mode" not in st.session_state: st.session_state.match_mode = perm_data
 if "history_logs" not in st.session_state: st.session_state.history_logs = perm_data.get("history_logs", [])
 if "current_teams" not in st.session_state: st.session_state.current_teams = perm_data.get("current_teams", {})
 if "current_q_idx" not in st.session_state: st.session_state.current_q_idx = perm_data.get("current_q_idx", 0)
+if "settlement_katalk_text" not in st.session_state: st.session_state.settlement_katalk_text = perm_data.get("settlement_katalk_text", "")
 if "ai_teams" not in st.session_state: st.session_state.ai_teams = {}
 
 if "edited_score_df" not in st.session_state:
@@ -355,6 +372,7 @@ if page == menu_1:
                         
                 st.session_state.edited_score_df = get_blank_score_df(new_mode)
                 st.session_state.current_q_idx = 0
+                st.session_state.settlement_katalk_text = "" 
                 
                 save_permanent_data()
                 st.rerun()
@@ -388,6 +406,12 @@ elif page == menu_2:
     st.write("저장 시 자동으로 다음 쿼터로 넘어가며, 언제든 박스를 눌러 이전 쿼터를 수정할 수 있습니다.")
     
     loop_count = 8 if "2파전" in st.session_state.match_mode else 9
+    
+    # [안전 검문 패치] 모드와 점수판 길이가 다르면 강제로 표 리셋 (차원의 문 버그 방어)
+    if len(st.session_state.edited_score_df) != loop_count:
+        st.session_state.edited_score_df = get_blank_score_df(st.session_state.match_mode)
+        st.session_state.current_q_idx = 0
+        
     quarter_options = [f"{i}쿼터" for i in range(1, loop_count + 1)]
     
     if st.session_state.current_q_idx >= loop_count:
@@ -466,9 +490,9 @@ elif page == menu_2:
         valid_teams = []
         valid_scores = []
         
-        if pd.notna(b_val): valid_teams.append("블루"); valid_scores.append(int(b_val))
-        if pd.notna(r_val): valid_teams.append("레드"); valid_scores.append(int(r_val))
-        if bl_val is not None and pd.notna(bl_val): valid_teams.append("블랙"); valid_scores.append(int(bl_val))
+        if pd.notna(b_val) and str(b_val).strip() != "-": valid_teams.append("블루"); valid_scores.append(int(b_val))
+        if pd.notna(r_val) and str(r_val).strip() != "-": valid_teams.append("레드"); valid_scores.append(int(r_val))
+        if bl_val is not None and pd.notna(bl_val) and str(bl_val).strip() != "-": valid_teams.append("블랙"); valid_scores.append(int(bl_val))
         
         if len(valid_teams) == 2:
             tm1, tm2 = valid_teams[0], valid_teams[1]
@@ -502,6 +526,10 @@ elif page == menu_2:
             "승점": f"{stat['PTS']}점", "득실차 (득/실)": f"{stat['GD']} ({stat['GF']}/{stat['GA']})"
         })
     st.table(pd.DataFrame(final_display).set_index("순위"))
+
+    if st.session_state.settlement_katalk_text:
+        st.success("[알림] 오늘 매치 정산 공지가 완료되었습니다.")
+        st.text_area("?? 복사 후 카톡 공지용 정산 텍스트", value=st.session_state.settlement_katalk_text, height=160)
 
     if st.session_state.current_teams:
         st.markdown("---")
@@ -548,6 +576,29 @@ elif page == menu_2:
                             if p_name in st.session_state.MEMBER_DATABASE:
                                 current_mmr = int(st.session_state.MEMBER_DATABASE[p_name].get("MMR", 1000))
                                 st.session_state.MEMBER_DATABASE[p_name]["MMR"] = current_mmr + mmr_change
+                    
+                    notice_lines = [f"[?? 몽말 풋살 회비 정산 공지 ({st.session_state.match_mode})]\n"]
+                    
+                    if "3파전" in st.session_state.match_mode:
+                        t2_name = ranked_teams[1]
+                        t2_players = [p["name"] for p in st.session_state.current_teams.get(t2_name, [])]
+                        t3_name = ranked_teams[2]
+                        t3_players = [p["name"] for p in st.session_state.current_teams.get(t3_name, [])]
+                        
+                        if t2_players:
+                            notice_lines.append(f"?? 오늘 2등 ({t2_name}팀): {', '.join(t2_players)} ? 각 1,000원")
+                        if t3_players:
+                            notice_lines.append(f"?? 오늘 3등 ({t3_name}팀): {', '.join(t3_players)} ? 각 2,000원")
+                    else:
+                        t2_name = ranked_teams[1]
+                        t2_players = [p["name"] for p in st.session_state.current_teams.get(t2_name, [])]
+                        if t2_players:
+                            notice_lines.append(f"?? 오늘 2등 ({t2_name}팀): {', '.join(t2_players)} ? 각 2,000원")
+                            
+                    notice_lines.append("\n위 명단에 해당하시는 분들은 아래 계좌로 입금 부탁드립니다! ?")
+                    notice_lines.append("?? 카카오뱅크 79421977437 최홍찬")
+                    
+                    st.session_state.settlement_katalk_text = "\n".join(notice_lines)
                     
                     st.session_state.history_logs.append(log_entry)
                     save_permanent_data()
@@ -610,7 +661,6 @@ elif page == menu_3:
                     st.dataframe(pd.DataFrame(fine_table), use_container_width=True, hide_index=True)
 
                 if is_admin:
-                    # [마지막 결함 해결] 기록 삭제 시 부여됐던 MMR 롤백(원상복구) 기능 추가
                     if st.button("이 기록 삭제하기 (관리자 전용)", key=f"del_log_{real_idx}"):
                         item_to_delete = st.session_state.history_logs[real_idx]
                         for p_name, f_info in item_to_delete.get("fines", {}).items():
@@ -679,10 +729,6 @@ else:
     st.write("엑셀 데이터를 [이름, 공격, 수비, 키퍼, MMR] 순서대로 복사해서 아래 표에 붙여넣기 하세요.")
     
     bulk_input_processed = st.session_state.bulk_input_df.copy()
-    bulk_input_processed["공격"] = bulk_input_processed["공격"].astype(float)
-    bulk_input_processed["수비"] = bulk_input_processed["수비"].astype(float)
-    bulk_input_processed["키퍼"] = bulk_input_processed["키퍼"].astype(float)
-    bulk_input_processed["MMR"] = bulk_input_processed["MMR"].astype(int)
 
     grid_bulk = st.data_editor(
         bulk_input_processed, num_rows="fixed", use_container_width=True, hide_index=True,
@@ -701,10 +747,10 @@ else:
             name = str(row["이름"]).strip()
             if name and name != "None" and name != "":
                 st.session_state.MEMBER_DATABASE[name] = {
-                    "공격": round(float(row["공격"]), 2), 
-                    "수비": round(float(row["수비"]), 2), 
-                    "키퍼": round(float(row["키퍼"]), 2),
-                    "MMR": int(row["MMR"])
+                    "공격": safe_float(row.get("공격"), 3.0), 
+                    "수비": safe_float(row.get("수비"), 3.0), 
+                    "키퍼": safe_float(row.get("키퍼"), 3.0),
+                    "MMR": safe_int(row.get("MMR"), 1000)
                 }
                 saved_count += 1
         if saved_count > 0:
@@ -725,10 +771,10 @@ else:
     for name, stats in st.session_state.MEMBER_DATABASE.items():
         db_list.append({
             "이름": name, 
-            "공격점수": round(float(stats.get("공격", 0)), 2), 
-            "수비점수": round(float(stats.get("수비", 0)), 2), 
-            "키퍼점수": round(float(stats.get("키퍼", 0)), 2),
-            "MMR": int(stats.get("MMR", 1000))
+            "공격점수": safe_float(stats.get("공격", 0)), 
+            "수비점수": safe_float(stats.get("수비", 0)), 
+            "키퍼점수": safe_float(stats.get("키퍼", 0)),
+            "MMR": safe_int(stats.get("MMR", 1000))
         })
     df_db = pd.DataFrame(db_list)
     
@@ -755,10 +801,10 @@ else:
                 name = str(row["이름"]).strip()
                 if name and name != "None" and name != "":
                     new_database[name] = {
-                        "공격": round(float(row["공격점수"]), 2),
-                        "수비": round(float(row["수비점수"]), 2),
-                        "키퍼": round(float(row["키퍼점수"]), 2),
-                        "MMR": int(row["MMR"])
+                        "공격": safe_float(row.get("공격점수"), 3.0),
+                        "수비": safe_float(row.get("수비점수"), 3.0),
+                        "키퍼": safe_float(row.get("키퍼점수"), 3.0),
+                        "MMR": safe_int(row.get("MMR"), 1000)
                     }
             st.session_state.MEMBER_DATABASE = new_database
             save_permanent_data()
