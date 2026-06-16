@@ -229,5 +229,6 @@
             }
         ]
     },
-    "current_q_idx": 0
+    "current_q_idx": 0,
+    "settlement_katalk_text": ""
 }
