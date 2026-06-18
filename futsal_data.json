@@ -166,7 +166,7 @@
             2.0,
             1.0,
             1.0,
-            NaN,
+            1.0,
             NaN,
             NaN,
             NaN,
@@ -176,7 +176,7 @@
             3.0,
             2.0,
             1.0,
-            NaN,
+            3.0,
             NaN,
             NaN,
             NaN,
@@ -229,6 +229,6 @@
             }
         ]
     },
-    "current_q_idx": 3,
+    "current_q_idx": 4,
     "settlement_katalk_text": ""
 }
