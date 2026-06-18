@@ -165,7 +165,7 @@
         "블루": [
             2.0,
             1.0,
-            NaN,
+            1.0,
             NaN,
             NaN,
             NaN,
@@ -175,7 +175,7 @@
         "레드": [
             3.0,
             2.0,
-            NaN,
+            1.0,
             NaN,
             NaN,
             NaN,
@@ -229,6 +229,6 @@
             }
         ]
     },
-    "current_q_idx": 2,
+    "current_q_idx": 3,
     "settlement_katalk_text": ""
 }
