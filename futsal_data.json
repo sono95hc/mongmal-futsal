@@ -163,27 +163,40 @@
         "최홍찬",
         "김유찬"
     ],
-    "match_mode": "2파전",
+    "match_mode": "3파전",
     "score_data_dict": {
         "블루": [
-            2.0,
-            1.0,
-            1.0,
-            1.0,
-            3.0,
-            3.0,
-            3.0,
-            2.0
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ],
+        "블랙": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
         ],
         "레드": [
-            3.0,
-            2.0,
-            1.0,
-            3.0,
-            2.0,
-            2.0,
-            3.0,
-            3.0
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
         ]
     },
     "history_logs": [
@@ -277,29 +290,29 @@
         }
     ],
     "current_teams": {
-        "레드": [
+        "블랙": [
             {
                 "name": "신병재"
             },
             {
-                "name": "이충수"
+                "name": "이광수"
             },
             {
                 "name": "정대영"
             },
             {
-                "name": "지동일"
+                "name": "최덕규"
             },
             {
-                "name": "장영호"
-            },
-            {
-                "name": "최홍찬"
+                "name": "이현진"
             }
         ],
-        "블루": [
+        "레드": [
             {
-                "name": "김우주"
+                "name": "김규헌"
+            },
+            {
+                "name": "김정섭"
             },
             {
                 "name": "김현준"
@@ -308,19 +321,30 @@
                 "name": "이예찬"
             },
             {
+                "name": "장영호"
+            },
+            {
+                "name": "김유찬"
+            }
+        ],
+        "블루": [
+            {
+                "name": "김우주"
+            },
+            {
                 "name": "용성원"
             },
             {
-                "name": "최덕규"
+                "name": "이주원"
             },
             {
-                "name": "박중완"
+                "name": "독성원"
             },
             {
-                "name": "유사무엘"
+                "name": "최홍찬"
             }
         ]
     },
-    "current_q_idx": 7,
-    "settlement_katalk_text": "[?? 몽말 풋살 회비 정산 공지 (2파전)]\n\n?? 오늘 2등 (블루팀): 김우주, 김현준, 이예찬, 용성원, 최덕규, 박중완, 유사무엘 ? 각 2,000원\n\n위 명단에 해당하시는 분들은 아래 계좌로 입금 부탁드립니다! ?\n?? 카카오뱅크 79421977437 최홍찬"
+    "current_q_idx": 0,
+    "settlement_katalk_text": ""
 }
