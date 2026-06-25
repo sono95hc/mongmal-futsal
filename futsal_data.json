@@ -167,7 +167,7 @@
     "score_data_dict": {
         "블루": [
             1,
-            null,
+            3,
             null,
             null,
             null,
@@ -189,7 +189,7 @@
         ],
         "레드": [
             null,
-            null,
+            1,
             null,
             null,
             null,
@@ -345,6 +345,6 @@
             }
         ]
     },
-    "current_q_idx": 1,
+    "current_q_idx": 2,
     "settlement_katalk_text": ""
 }
