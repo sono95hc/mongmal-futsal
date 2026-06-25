@@ -166,7 +166,7 @@
     "match_mode": "3파전",
     "score_data_dict": {
         "블루": [
-            null,
+            1,
             null,
             null,
             null,
@@ -177,7 +177,7 @@
             null
         ],
         "블랙": [
-            null,
+            0,
             null,
             null,
             null,
@@ -345,6 +345,6 @@
             }
         ]
     },
-    "current_q_idx": 0,
+    "current_q_idx": 1,
     "settlement_katalk_text": ""
 }
