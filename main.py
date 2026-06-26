@@ -13,7 +13,6 @@ st.set_page_config(page_title="몽말 팀배분 프로그램 by홍찬", layout="
 
 DB_FILE = "futsal_data.json"
 
-# --- [안전 필터 함수 추가] 빈칸이나 문자가 들어와도 터지지 않게 방어 ---
 def safe_float(val, default=3.0):
     try:
         return round(float(val), 2)
@@ -236,11 +235,17 @@ if page == menu_1:
 
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
-    st.write("AI 버튼을 누르면 공격/수비 실력 및 종합 전투력(MMR)을 분석하여 밸런스가 조율됩니다.")
-    st.caption("※ 꼼수 방지: 명단이 바뀌지 않는 한 하루 동안 같은 AI 결과가 나옵니다.")
+    st.write("상황에 맞게 아래 버튼을 선택하여 팀을 배분하세요.")
     
-    if st.button("AI 자동 밸런스 매칭 가동", use_container_width=True):
-        
+    # [지각생 고정 배치 패치] 두 개의 직관적인 버튼으로 분리
+    col_ai1, col_ai2 = st.columns(2)
+    
+    with col_ai1:
+        btn_full_ai = st.button("전원 AI 매칭 (새로 짜기)", use_container_width=True)
+    with col_ai2:
+        btn_fill_new = st.button("새 멤버만 빈자리 채우기", use_container_width=True)
+    
+    if btn_full_ai:
         now_kst = datetime.utcnow() + timedelta(hours=9)
         today_date_str = now_kst.strftime("%Y-%m-%d")
         roster_str = "".join(sorted(current_att_list))
@@ -328,6 +333,35 @@ if page == menu_1:
         random.seed()
         st.rerun()
 
+    # [추가 배치 로직] 미배정 인원만 순서대로 쏙쏙 채우기
+    if btn_fill_new:
+        fill_order = ["레드", "블루", "블랙"] if "3파전" in selected_mode else ["레드", "블루"]
+        
+        pre_assigned = {}
+        unassigned = []
+        for p in current_att_list:
+            sel = st.session_state.get(f"sel_{p}", "미배정")
+            if sel in fill_order:
+                pre_assigned[p] = sel
+            else:
+                unassigned.append(p)
+                
+        if unassigned:
+            team_counts = {t: list(pre_assigned.values()).count(t) for t in fill_order}
+            for u in unassigned:
+                min_count = min(team_counts.values())
+                candidates = [t for t in fill_order if team_counts[t] == min_count]
+                chosen = candidates[0] 
+                
+                pre_assigned[u] = chosen
+                team_counts[chosen] += 1
+                
+            st.session_state.ai_teams = pre_assigned
+            for p, t in pre_assigned.items():
+                st.session_state[f"sel_{p}"] = t
+                
+            st.rerun()
+
     final_team_selections = {}
     if current_att_list:
         cols = st.columns(2)
@@ -391,9 +425,9 @@ if page == menu_1:
                 continue
             m_names = [p['name'] for p in members]
             random.shuffle(m_names) 
-            katalk_text += f"\n{t_name}팀 ({len(members)}명)\n{', '.join(m_names)}\n"
+            katalk_text += f"\n[{t_name}팀] ({len(members)}명)\n{', '.join(m_names)}\n"
             
-        st.text_area("복사 후 카톡 공지용 텍스트", value=katalk_text, height=140)
+        st.text_area("[복사 후 카톡 공지용 텍스트]", value=katalk_text, height=140)
 
 
 # =========================================================================
@@ -407,7 +441,6 @@ elif page == menu_2:
     
     loop_count = 8 if "2파전" in st.session_state.match_mode else 9
     
-    # [안전 검문 패치] 모드와 점수판 길이가 다르면 강제로 표 리셋 (차원의 문 버그 방어)
     if len(st.session_state.edited_score_df) != loop_count:
         st.session_state.edited_score_df = get_blank_score_df(st.session_state.match_mode)
         st.session_state.current_q_idx = 0
@@ -529,7 +562,7 @@ elif page == menu_2:
 
     if st.session_state.settlement_katalk_text:
         st.success("[알림] 오늘 매치 정산 공지가 완료되었습니다.")
-        st.text_area("?? 복사 후 카톡 공지용 정산 텍스트", value=st.session_state.settlement_katalk_text, height=160)
+        st.text_area("[복사 후 카톡 공지용 정산 텍스트]", value=st.session_state.settlement_katalk_text, height=160)
 
     if st.session_state.current_teams:
         st.markdown("---")
@@ -577,7 +610,7 @@ elif page == menu_2:
                                 current_mmr = int(st.session_state.MEMBER_DATABASE[p_name].get("MMR", 1000))
                                 st.session_state.MEMBER_DATABASE[p_name]["MMR"] = current_mmr + mmr_change
                     
-                    notice_lines = [f"[?? 몽말 풋살 회비 정산 공지 ({st.session_state.match_mode})]\n"]
+                    notice_lines = [f"[몽말 풋살 회비 정산 공지 ({st.session_state.match_mode})]\n"]
                     
                     if "3파전" in st.session_state.match_mode:
                         t2_name = ranked_teams[1]
@@ -586,24 +619,24 @@ elif page == menu_2:
                         t3_players = [p["name"] for p in st.session_state.current_teams.get(t3_name, [])]
                         
                         if t2_players:
-                            notice_lines.append(f"?? 오늘 2등 ({t2_name}팀): {', '.join(t2_players)} ? 각 1,000원")
+                            notice_lines.append(f"[오늘 2등] {t2_name}팀: {', '.join(t2_players)} -> 각 1,000원")
                         if t3_players:
-                            notice_lines.append(f"?? 오늘 3등 ({t3_name}팀): {', '.join(t3_players)} ? 각 2,000원")
+                            notice_lines.append(f"[오늘 3등] {t3_name}팀: {', '.join(t3_players)} -> 각 2,000원")
                     else:
                         t2_name = ranked_teams[1]
                         t2_players = [p["name"] for p in st.session_state.current_teams.get(t2_name, [])]
                         if t2_players:
-                            notice_lines.append(f"?? 오늘 2등 ({t2_name}팀): {', '.join(t2_players)} ? 각 2,000원")
+                            notice_lines.append(f"[오늘 2등] {t2_name}팀: {', '.join(t2_players)} -> 각 2,000원")
                             
-                    notice_lines.append("\n위 명단에 해당하시는 분들은 아래 계좌로 입금 부탁드립니다! ?")
-                    notice_lines.append("?? 카카오뱅크 79421977437 최홍찬")
+                    notice_lines.append("\n위 명단에 해당하시는 분들은 아래 계좌로 입금 부탁드립니다.")
+                    notice_lines.append("[계좌번호] 카카오뱅크 79421977437 최홍찬")
                     
                     st.session_state.settlement_katalk_text = "\n".join(notice_lines)
                     
                     st.session_state.history_logs.append(log_entry)
                     save_permanent_data()
                     st.session_state.confirm_close = False
-                    st.success("정산 완료. 승률 및 MMR이 장부에 안전하게 기록되었습니다.")
+                    st.success("[알림] 정산 완료. 승률 및 MMR이 장부에 안전하게 기록되었습니다.")
                     st.rerun()
             with c2:
                 if st.button("아니오, 취소", use_container_width=True):
@@ -642,7 +675,7 @@ elif page == menu_3:
                     st.markdown(f"> **[2위]** {ranks_dict.get('2위', '정보 없음')}")
                     
                 st.markdown("---")
-                st.markdown("**세부 회비 & MMR 변동표**")
+                st.markdown("**세부 회비 및 MMR 변동표**")
                 
                 fine_table = []
                 fines_dict = item.get("fines", {})
