@@ -185,7 +185,7 @@
         "블랙": [
             null,
             4,
-            null,
+            0,
             null,
             null,
             null,
@@ -196,7 +196,7 @@
         "레드": [
             0,
             null,
-            null,
+            1,
             null,
             null,
             null,
@@ -458,6 +458,6 @@
             }
         ]
     },
-    "current_q_idx": 2,
+    "current_q_idx": 3,
     "settlement_katalk_text": ""
 }
