@@ -173,7 +173,7 @@
     "score_data_dict": {
         "블루": [
             0,
-            null,
+            0,
             null,
             null,
             null,
@@ -184,7 +184,7 @@
         ],
         "블랙": [
             null,
-            null,
+            4,
             null,
             null,
             null,
@@ -458,6 +458,6 @@
             }
         ]
     },
-    "current_q_idx": 1,
+    "current_q_idx": 2,
     "settlement_katalk_text": ""
 }
