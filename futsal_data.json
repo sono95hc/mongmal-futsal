@@ -168,9 +168,21 @@
         "유사무엘",
         "김민재"
     ],
-    "match_mode": "2파전",
+    "match_mode": "3파전",
     "score_data_dict": {
         "블루": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ],
+        "블랙": [
+            null,
             null,
             null,
             null,
@@ -181,6 +193,7 @@
             null
         ],
         "레드": [
+            null,
             null,
             null,
             null,
@@ -389,36 +402,41 @@
         }
     ],
     "current_teams": {
-        "레드": [
+        "블랙": [
             {
                 "name": "김현준"
-            },
-            {
-                "name": "신병재"
             },
             {
                 "name": "최덕규"
             },
             {
-                "name": "장영호"
+                "name": "이현진"
             },
             {
-                "name": "최홍찬"
+                "name": "황인수"
             },
             {
-                "name": "이충수"
-            },
-            {
-                "name": "유사무엘"
+                "name": "김민재"
             }
         ],
-        "블루": [
+        "레드": [
             {
                 "name": "김우주"
             },
             {
+                "name": "신병재"
+            },
+            {
                 "name": "이예찬"
             },
+            {
+                "name": "장영호"
+            },
+            {
+                "name": "이충수"
+            }
+        ],
+        "블루": [
             {
                 "name": "이광수"
             },
@@ -426,13 +444,13 @@
                 "name": "정대영"
             },
             {
+                "name": "최홍찬"
+            },
+            {
                 "name": "김유찬"
             },
             {
-                "name": "이현진"
-            },
-            {
-                "name": "황인수"
+                "name": "유사무엘"
             }
         ]
     },
