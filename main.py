@@ -68,10 +68,10 @@ def push_to_github(content_str):
 def get_blank_score_df(mode="3파전"):
     if "2파전" in mode:
         quarters = [f"{i}쿼터" for i in range(1, 9)]
-        return pd.DataFrame({"블루": [None] * 8, "레드": [None] * 8}, index=quarters)
+        return pd.DataFrame({"블루": [None] * 8, "레드": [None] * 8, "PK승": ["없음"] * 8}, index=quarters)
     else:
         quarters = [f"{i}쿼터" for i in range(1, 10)]
-        return pd.DataFrame({"블루": [None] * 9, "블랙": [None] * 9, "레드": [None] * 9}, index=quarters)
+        return pd.DataFrame({"블루": [None] * 9, "블랙": [None] * 9, "레드": [None] * 9, "PK승": ["없음"] * 9}, index=quarters)
 
 def load_permanent_data():
     default_data = {
@@ -166,7 +166,12 @@ if "edited_score_df" not in st.session_state:
         if saved_dict and isinstance(saved_dict, dict) and len(list(saved_dict.values())[0]) > 0:
             dict_len = len(list(saved_dict.values())[0])
             quarters = [f"{i}쿼터" for i in range(1, dict_len + 1)]
-            st.session_state.edited_score_df = pd.DataFrame(saved_dict, index=quarters)
+            
+            loaded_df = pd.DataFrame(saved_dict, index=quarters)
+            # 기존 저장된 데이터에 'PK승' 컬럼이 없으면 추가
+            if "PK승" not in loaded_df.columns:
+                loaded_df["PK승"] = "없음"
+            st.session_state.edited_score_df = loaded_df
         else:
             st.session_state.edited_score_df = get_blank_score_df(mode)
     except Exception:
@@ -180,7 +185,7 @@ if "bulk_input_df" not in st.session_state:
 if "show_warning" not in st.session_state: st.session_state.show_warning = False
 if "confirm_close" not in st.session_state: st.session_state.confirm_close = False
 
-# [어워즈 시상대 HTML 생성 함수] 이모티콘 제거 & 모바일 대응 UI 반영
+# [어워즈 시상대 HTML 생성 함수]
 def make_podium_html(title, data_list, unit=""):
     while len(data_list) < 3:
         data_list.append(("-", "-"))
@@ -527,11 +532,21 @@ elif page == menu_2:
         with c1: val_blue = st.number_input("블루 점수", min_value=0, max_value=99, value=int(current_q_data["블루"]) if pd.notna(current_q_data.get("블루")) else 0, step=1)
         with c2: val_red = st.number_input("레드 점수", min_value=0, max_value=99, value=int(current_q_data["레드"]) if pd.notna(current_q_data.get("레드")) else 0, step=1)
 
-    if st.button("해당 쿼터 점수 저장하기", use_container_width=True, type="primary"):
+    # 승부차기 결과 입력 추가
+    st.write("---")
+    st.write("이번 쿼터 승부차기 결과 (무승부 혹은 동점이 아닐 경우 '없음')")
+    pk_options = ["없음", "블루", "레드"] if "2파전" in st.session_state.match_mode else ["없음", "블루", "블랙", "레드"]
+    current_pk = current_q_data.get("PK승", "없음")
+    if pd.isna(current_pk): current_pk = "없음"
+    val_pk = st.selectbox("승부차기 승리 팀", pk_options, index=pk_options.index(current_pk) if current_pk in pk_options else 0)
+
+    if st.button("해당 쿼터 점수 및 승부차기 결과 저장하기", use_container_width=True, type="primary"):
         st.session_state.edited_score_df.at[selected_q, "블루"] = val_blue
         st.session_state.edited_score_df.at[selected_q, "레드"] = val_red
         if "3파전" in st.session_state.match_mode:
             st.session_state.edited_score_df.at[selected_q, "블랙"] = val_black
+            
+        st.session_state.edited_score_df.at[selected_q, "PK승"] = val_pk
             
         if st.session_state.current_q_idx < loop_count - 1:
             st.session_state.current_q_idx += 1
@@ -548,13 +563,15 @@ elif page == menu_2:
     st.dataframe(display_score_df, use_container_width=True)
 
     history_keys = ["레드", "블루"] if "2파전" in st.session_state.match_mode else ["레드", "블랙", "블루"]
-    history = {t: {"W": 0, "D": 0, "L": 0, "GF": 0, "GA": 0, "GD": 0, "PTS": 0, "MP": 0} for t in history_keys}
+    # PKW (승부차기 승) 추가
+    history = {t: {"W": 0, "D": 0, "L": 0, "GF": 0, "GA": 0, "GD": 0, "PTS": 0, "MP": 0, "PKW": 0} for t in history_keys}
 
     for i in range(loop_count):
         row_data = st.session_state.edited_score_df.iloc[i]
         b_val = row_data.get("블루")
         r_val = row_data.get("레드")
         bl_val = row_data.get("블랙") if "3파전" in st.session_state.match_mode else None
+        pk_val = row_data.get("PK승", "없음")
         
         valid_teams = []
         valid_scores = []
@@ -579,12 +596,17 @@ elif page == menu_2:
                 history[tm1]["D"] += 1; history[tm1]["PTS"] += 1
                 history[tm2]["D"] += 1; history[tm2]["PTS"] += 1
 
+        # 승부차기 결과 합산
+        if pd.notna(pk_val) and str(pk_val).strip() in history:
+            history[str(pk_val).strip()]["PKW"] += 1
+
     for t in history:
         history[t]["GD"] = history[t]["GF"] - history[t]["GA"]
 
     st.subheader("오늘 경기 실시간 순위표")
-    sort_df = pd.DataFrame([{"팀": t, "PTS": history[t]["PTS"], "GD": history[t]["GD"], "GF": history[t]["GF"]} for t in history_keys])
-    sort_df = sort_df.sort_values(by=["PTS", "GD", "GF"], ascending=[False, False, False]).reset_index(drop=True)
+    # 정렬 기준: PTS(승점) -> PKW(승부차기 승) -> GD(득실차) -> GF(다득점)
+    sort_df = pd.DataFrame([{"팀": t, "PTS": history[t]["PTS"], "PKW": history[t]["PKW"], "GD": history[t]["GD"], "GF": history[t]["GF"]} for t in history_keys])
+    sort_df = sort_df.sort_values(by=["PTS", "PKW", "GD", "GF"], ascending=[False, False, False, False]).reset_index(drop=True)
 
     final_display = []
     for idx, row in sort_df.iterrows():
@@ -592,6 +614,7 @@ elif page == menu_2:
         final_display.append({
             "순위": f"{idx+1}위", "팀명": f"{t_name}팀", "경기수": f"{stat['MP']}전",
             "승 - 무 - 패": f"{stat['W']}승 - {stat['D']}무 - {stat['L']}패",
+            "승부차기 승": f"{stat['PKW']}승",
             "승점": f"{stat['PTS']}점", "득실차 (득/실)": f"{stat['GD']} ({stat['GF']}/{stat['GA']})"
         })
     st.table(pd.DataFrame(final_display).set_index("순위"))
@@ -766,7 +789,6 @@ elif page == menu_4:
                     stats_map[p_name]["W"] += 1
                 stats_map[p_name]["total_fine"] += f_info.get("fine", 0)
             
-    # --- [명예의 전당] 공동수상 제거 & 1/2/3등 1명씩만 선출하여 시상대 렌더링 ---
     valid_players = {p: data for p, data in stats_map.items() if data["MP"] > 0}
     
     if valid_players:
