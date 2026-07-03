@@ -729,31 +729,55 @@ elif page == menu_4:
                     stats_map[p_name]["W"] += 1
                 stats_map[p_name]["total_fine"] += f_info.get("fine", 0)
             
+    # --- [명예의 전당] 공동수상 & 시상대 로직 (이모티콘 완벽 제거) ---
+    def get_podium(data_dict, reverse_sort=True):
+        if not data_dict: return []
+        grouped = {}
+        for p, v in data_dict.items():
+            grouped.setdefault(v, []).append(p)
+        sorted_vals = sorted(grouped.keys(), reverse=reverse_sort)
+        
+        podium = []
+        for i in range(min(3, len(sorted_vals))):
+            podium.append((i+1, grouped[sorted_vals[i]], sorted_vals[i]))
+        return podium
+
+    def make_podium_md(title, podium_data, unit):
+        md = f"#### {title}\n"
+        if not podium_data:
+            return md + "데이터 없음\n"
+        for rank, players, val in podium_data:
+            p_str = ", ".join(players)
+            val_str = f"{val:.1f}{unit}" if isinstance(val, float) else f"{val}{unit}"
+            md += f"**[{rank}위]** {p_str} ({val_str})\n\n"
+        return md
+
     valid_players = {p: data for p, data in stats_map.items() if data["MP"] > 0}
     if valid_players:
-        king_att = max(valid_players.items(), key=lambda x: x[1]['MP'])[0]
-        king_fine = max(valid_players.items(), key=lambda x: x[1]['total_fine'])[0]
-        
         qual_players = {p: data for p, data in valid_players.items() if data["MP"] >= 3}
         if not qual_players:
             qual_players = valid_players
             
-        def get_wr(data):
-            return (data['W'] / data['MP']) * 100
-            
-        king_win = max(qual_players.items(), key=lambda x: (get_wr(x[1]), x[1]['W']))[0]
-        king_lose = min(qual_players.items(), key=lambda x: (get_wr(x[1]), -x[1]['MP']))[0]
+        att_dict = {p: data['MP'] for p, data in valid_players.items()}
+        fine_dict = {p: data['total_fine'] for p, data in valid_players.items() if data['total_fine'] > 0}
+        wr_dict = {p: (data['W'] / data['MP'] * 100) for p, data in qual_players.items()}
+        
+        podium_att = get_podium(att_dict, True)
+        podium_win = get_podium(wr_dict, True)
+        podium_lose = get_podium(wr_dict, False)
+        podium_fine = get_podium(fine_dict, True)
         
         st.markdown("### [ 몽말 명예의 전당 ]")
+        st.markdown("---")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.info(f"**참석킹**\n\n### {king_att}\n{valid_players[king_att]['MP']}회 참석")
+            st.markdown(make_podium_md("[ 몽말 지박령 ]", podium_att, "회"))
         with c2:
-            st.success(f"**승리요정**\n\n### {king_win}\n승률 {get_wr(valid_players[king_win]):.1f}%")
+            st.markdown(make_podium_md("[ 버스기사 ]", podium_win, "%"))
         with c3:
-            st.error(f"**패배원흉**\n\n### {king_lose}\n승률 {get_wr(valid_players[king_lose]):.1f}%")
+            st.markdown(make_podium_md("[ 혹시 스파이? ]", podium_lose, "%"))
         with c4:
-            st.warning(f"**기부왕**\n\n### {king_fine}\n{valid_players[king_fine]['total_fine']}원")
+            st.markdown(make_podium_md("[ 기부왕 ]", podium_fine, "원"))
         st.markdown("---")
             
     display_stats = []
