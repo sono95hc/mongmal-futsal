@@ -236,8 +236,8 @@ if page == menu_1:
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
     st.write("상황에 맞게 아래 버튼을 선택하여 팀을 배분하세요.")
+    st.caption("[안내] 명단이 바뀌지 않는 한 하루 동안 같은 AI 결과가 나옵니다.")
     
-    # [지각생 고정 배치 패치] 두 개의 직관적인 버튼으로 분리
     col_ai1, col_ai2 = st.columns(2)
     
     with col_ai1:
@@ -333,7 +333,6 @@ if page == menu_1:
         random.seed()
         st.rerun()
 
-    # [추가 배치 로직] 미배정 인원만 순서대로 쏙쏙 채우기
     if btn_fill_new:
         fill_order = ["레드", "블루", "블랙"] if "3파전" in selected_mode else ["레드", "블루"]
         
@@ -730,6 +729,33 @@ elif page == menu_4:
                     stats_map[p_name]["W"] += 1
                 stats_map[p_name]["total_fine"] += f_info.get("fine", 0)
             
+    valid_players = {p: data for p, data in stats_map.items() if data["MP"] > 0}
+    if valid_players:
+        king_att = max(valid_players.items(), key=lambda x: x[1]['MP'])[0]
+        king_fine = max(valid_players.items(), key=lambda x: x[1]['total_fine'])[0]
+        
+        qual_players = {p: data for p, data in valid_players.items() if data["MP"] >= 3}
+        if not qual_players:
+            qual_players = valid_players
+            
+        def get_wr(data):
+            return (data['W'] / data['MP']) * 100
+            
+        king_win = max(qual_players.items(), key=lambda x: (get_wr(x[1]), x[1]['W']))[0]
+        king_lose = min(qual_players.items(), key=lambda x: (get_wr(x[1]), -x[1]['MP']))[0]
+        
+        st.markdown("### [ 몽말 명예의 전당 ]")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.info(f"**참석킹**\n\n### {king_att}\n{valid_players[king_att]['MP']}회 참석")
+        with c2:
+            st.success(f"**승리요정**\n\n### {king_win}\n승률 {get_wr(valid_players[king_win]):.1f}%")
+        with c3:
+            st.error(f"**패배원흉**\n\n### {king_lose}\n승률 {get_wr(valid_players[king_lose]):.1f}%")
+        with c4:
+            st.warning(f"**기부왕**\n\n### {king_fine}\n{valid_players[king_fine]['total_fine']}원")
+        st.markdown("---")
+            
     display_stats = []
     for p_name, s_data in stats_map.items():
         win_rate = (s_data["W"] / s_data["MP"] * 100) if s_data["MP"] > 0 else 0.0
@@ -789,7 +815,7 @@ else:
         if saved_count > 0:
             save_permanent_data()
             st.session_state.bulk_input_df = pd.DataFrame({"이름": [""] * 15, "공격": [3.0] * 15, "수비": [3.0] * 15, "키퍼": [3.0] * 15, "MMR": [1000] * 15})
-            st.success(f"[성공] 총 {saved_count}명의 데이터가 도감에 등록되었습니다.")
+            st.success("[성공] 총 데이터가 도감에 등록되었습니다.")
             st.rerun()
         else:
             st.error("입력된 이름이 없습니다.")
@@ -798,7 +824,7 @@ else:
     
     st.subheader("등록된 도감 수정 및 삭제실")
     st.write("데이터를 수정하거나 삭제할 수 있습니다. 수동 점수 합계(공격+수비)가 높은 순서대로 표시됩니다.")
-    st.caption("작업 후 아래의 [변경사항 도감에 최종 저장하기] 버튼을 눌러야 장부에 영구 반영됩니다.")
+    st.caption("[안내] 작업 후 아래의 변경사항 저장 버튼을 눌러야 장부에 영구 반영됩니다.")
     
     db_list = []
     for name, stats in st.session_state.MEMBER_DATABASE.items():
