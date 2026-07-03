@@ -180,6 +180,43 @@ if "bulk_input_df" not in st.session_state:
 if "show_warning" not in st.session_state: st.session_state.show_warning = False
 if "confirm_close" not in st.session_state: st.session_state.confirm_close = False
 
+# [어워즈 시상대 HTML 생성 함수] 이모티콘 제거 & 모바일 대응 UI 반영
+def make_podium_html(title, data_list, unit=""):
+    while len(data_list) < 3:
+        data_list.append(("-", "-"))
+
+    n1, v1 = data_list[0]
+    n2, v2 = data_list[1]
+    n3, v3 = data_list[2]
+
+    v1_str = f"{v1}{unit}" if str(v1) != "-" else "-"
+    v2_str = f"{v2}{unit}" if str(v2) != "-" else "-"
+    v3_str = f"{v3}{unit}" if str(v3) != "-" else "-"
+
+    html = f"""
+    <div style="text-align: center; margin-bottom: 20px; padding: 15px; border-radius: 10px; background-color: #1E1E1E;">
+        <h4 style="color: #FFFFFF; margin-bottom: 20px; font-weight: bold;">{title}</h4>
+        <div style="display: flex; justify-content: center; align-items: flex-end; height: 140px; gap: 4px;">
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
+                <div style="font-size: 0.9em; font-weight: bold; color: #E0E0E0;">{n2}</div>
+                <div style="font-size: 0.7em; color: #A0A0A0; margin-bottom: 4px;">{v2_str}</div>
+                <div style="background: linear-gradient(180deg, #BDBDBD 0%, #757575 100%); width: 100%; height: 70px; border-radius: 4px 4px 0 0; display: flex; justify-content: center; align-items: center; font-weight: bold; color: white;">2</div>
+            </div>
+            <div style="flex: 1.2; display: flex; flex-direction: column; align-items: center;">
+                <div style="font-size: 1.1em; font-weight: bold; color: #FFD700;">{n1}</div>
+                <div style="font-size: 0.8em; color: #A0A0A0; margin-bottom: 4px;">{v1_str}</div>
+                <div style="background: linear-gradient(180deg, #FFD700 0%, #F57F17 100%); width: 100%; height: 100px; border-radius: 4px 4px 0 0; display: flex; justify-content: center; align-items: center; font-size: 1.5em; font-weight: bold; color: white;">1</div>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
+                <div style="font-size: 0.85em; font-weight: bold; color: #CD7F32;">{n3}</div>
+                <div style="font-size: 0.7em; color: #A0A0A0; margin-bottom: 4px;">{v3_str}</div>
+                <div style="background: linear-gradient(180deg, #CD7F32 0%, #8D6E63 100%); width: 100%; height: 45px; border-radius: 4px 4px 0 0; display: flex; justify-content: center; align-items: center; font-weight: bold; color: white;">3</div>
+            </div>
+        </div>
+    </div>
+    """
+    return html
+
 menu_1 = "1. 명단 및 팀배분"
 menu_2 = "2. 경기 기록실"
 menu_3 = "3. 날짜별 기록실"
@@ -729,55 +766,43 @@ elif page == menu_4:
                     stats_map[p_name]["W"] += 1
                 stats_map[p_name]["total_fine"] += f_info.get("fine", 0)
             
-    # --- [명예의 전당] 공동수상 & 시상대 로직 (이모티콘 완벽 제거) ---
-    def get_podium(data_dict, reverse_sort=True):
-        if not data_dict: return []
-        grouped = {}
-        for p, v in data_dict.items():
-            grouped.setdefault(v, []).append(p)
-        sorted_vals = sorted(grouped.keys(), reverse=reverse_sort)
-        
-        podium = []
-        for i in range(min(3, len(sorted_vals))):
-            podium.append((i+1, grouped[sorted_vals[i]], sorted_vals[i]))
-        return podium
-
-    def make_podium_md(title, podium_data, unit):
-        md = f"#### {title}\n"
-        if not podium_data:
-            return md + "데이터 없음\n"
-        for rank, players, val in podium_data:
-            p_str = ", ".join(players)
-            val_str = f"{val:.1f}{unit}" if isinstance(val, float) else f"{val}{unit}"
-            md += f"**[{rank}위]** {p_str} ({val_str})\n\n"
-        return md
-
+    # --- [명예의 전당] 공동수상 제거 & 1/2/3등 1명씩만 선출하여 시상대 렌더링 ---
     valid_players = {p: data for p, data in stats_map.items() if data["MP"] > 0}
+    
     if valid_players:
         qual_players = {p: data for p, data in valid_players.items() if data["MP"] >= 3}
         if not qual_players:
             qual_players = valid_players
             
-        att_dict = {p: data['MP'] for p, data in valid_players.items()}
-        fine_dict = {p: data['total_fine'] for p, data in valid_players.items() if data['total_fine'] > 0}
-        wr_dict = {p: (data['W'] / data['MP'] * 100) for p, data in qual_players.items()}
-        
-        podium_att = get_podium(att_dict, True)
-        podium_win = get_podium(wr_dict, True)
-        podium_lose = get_podium(wr_dict, False)
-        podium_fine = get_podium(fine_dict, True)
+        att_sorted = sorted(valid_players.items(), key=lambda x: (x[1]['MP'], x[1]['W']), reverse=True)
+        att_top3 = [(k, v['MP']) for k, v in att_sorted[:3]]
+
+        win_sorted = sorted(qual_players.items(), key=lambda x: ((x[1]['W']/x[1]['MP']*100), x[1]['MP']), reverse=True)
+        win_top3 = [(k, round(v['W']/v['MP']*100, 1)) for k, v in win_sorted[:3]]
+
+        lose_sorted = sorted(qual_players.items(), key=lambda x: ((x[1]['W']/x[1]['MP']*100), -x[1]['MP']))
+        lose_top3 = [(k, round(v['W']/v['MP']*100, 1)) for k, v in lose_sorted[:3]]
+
+        fine_sorted = sorted(valid_players.items(), key=lambda x: (x[1]['total_fine'], x[1]['MP']), reverse=True)
+        fine_top3 = [(k, v['total_fine']) for k, v in fine_sorted[:3] if v['total_fine'] > 0]
         
         st.markdown("### [ 몽말 명예의 전당 ]")
         st.markdown("---")
-        c1, c2, c3, c4 = st.columns(4)
+        
+        c1, c2 = st.columns(2)
         with c1:
-            st.markdown(make_podium_md("[ 몽말 지박령 ]", podium_att, "회"))
+            st.markdown(make_podium_html("[ 몽말 지박령 ]", att_top3, "회"), unsafe_allow_html=True)
         with c2:
-            st.markdown(make_podium_md("[ 버스기사 ]", podium_win, "%"))
+            st.markdown(make_podium_html("[ 버스기사 ]", win_top3, "%"), unsafe_allow_html=True)
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        c3, c4 = st.columns(2)
         with c3:
-            st.markdown(make_podium_md("[ 혹시 스파이? ]", podium_lose, "%"))
+            st.markdown(make_podium_html("[ 혹시 스파이? ]", lose_top3, "%"), unsafe_allow_html=True)
         with c4:
-            st.markdown(make_podium_md("[ 기부왕 ]", podium_fine, "원"))
+            st.markdown(make_podium_html("[ 기부왕 ]", fine_top3, "원"), unsafe_allow_html=True)
+            
         st.markdown("---")
             
     display_stats = []
