@@ -601,7 +601,7 @@ elif page == menu_2:
     st.table(pd.DataFrame(final_display).set_index("순위"))
     
     st.markdown("---")
-    st.subheader("?? 최종 순위 수동 조정 (승점 동률 / 승부차기용)")
+    st.subheader("[최종 순위 수동 조정] (승점 동률 / 승부차기용)")
     st.write("승점과 득실차가 같아 승부차기를 진행했다면, 아래 체크박스를 눌러 최종 순위를 직접 지정하세요.")
     
     adjust_rank = st.checkbox("승부차기 결과로 최종 순위 변경하기")
@@ -611,17 +611,17 @@ elif page == menu_2:
     if adjust_rank:
         if "3파전" in st.session_state.match_mode:
             c1, c2, c3 = st.columns(3)
-            with c1: rank1 = st.selectbox("?? 1위 팀", history_keys, index=history_keys.index(final_ranked_teams[0]))
-            with c2: rank2 = st.selectbox("?? 2위 팀", history_keys, index=history_keys.index(final_ranked_teams[1]))
-            with c3: rank3 = st.selectbox("?? 3위 팀", history_keys, index=history_keys.index(final_ranked_teams[2]))
+            with c1: rank1 = st.selectbox("[ 1위 팀 ]", history_keys, index=history_keys.index(final_ranked_teams[0]))
+            with c2: rank2 = st.selectbox("[ 2위 팀 ]", history_keys, index=history_keys.index(final_ranked_teams[1]))
+            with c3: rank3 = st.selectbox("[ 3위 팀 ]", history_keys, index=history_keys.index(final_ranked_teams[2]))
             final_ranked_teams = [rank1, rank2, rank3]
         else:
             c1, c2 = st.columns(2)
-            with c1: rank1 = st.selectbox("?? 1위 팀", history_keys, index=history_keys.index(final_ranked_teams[0]))
-            with c2: rank2 = st.selectbox("?? 2위 팀", history_keys, index=history_keys.index(final_ranked_teams[1]))
+            with c1: rank1 = st.selectbox("[ 1위 팀 ]", history_keys, index=history_keys.index(final_ranked_teams[0]))
+            with c2: rank2 = st.selectbox("[ 2위 팀 ]", history_keys, index=history_keys.index(final_ranked_teams[1]))
             final_ranked_teams = [rank1, rank2]
             
-        st.info(f"?? 정산 시 반영될 최종 순위: 1위({final_ranked_teams[0]}) / 2위({final_ranked_teams[1]})" + (f" / 3위({final_ranked_teams[2]})" if "3파전" in st.session_state.match_mode else ""))
+        st.info(f"[안내] 정산 시 반영될 최종 순위: 1위({final_ranked_teams[0]}) / 2위({final_ranked_teams[1]})" + (f" / 3위({final_ranked_teams[2]})" if "3파전" in st.session_state.match_mode else ""))
 
     if st.session_state.settlement_katalk_text:
         st.success("[알림] 오늘 매치 정산 공지가 완료되었습니다.")
