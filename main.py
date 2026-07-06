@@ -261,7 +261,7 @@ if page == menu_1:
     att_input = st.text_area("최초 참석자 명단 (AI 밸런스 자동 매칭용)", value=current_att_str, height=80)
     
     current_late_str = " ".join([x for x in st.session_state.late_list if x])
-    late_input = st.text_area("추가 인원 명단 (블랙 ? 레드 ? 블루 순차 배정용)", value=current_late_str, height=60, placeholder="지각생 등 추가 참석자 입력")
+    late_input = st.text_area("추가 인원 명단 (블랙 -> 레드 -> 블루 순차 배정용)", value=current_late_str, height=60, placeholder="지각생 등 추가 참석자 입력")
     
     raw_att_list = [x.strip() for x in att_input.split() if x.strip()]
     current_att_list = []
@@ -303,7 +303,6 @@ if page == menu_1:
         now_kst = datetime.utcnow() + timedelta(hours=9)
         today_date_str = now_kst.strftime("%Y-%m-%d")
         roster_str = "".join(sorted(current_att_list))
-        # 무한 새로고침 꼼수 방지를 위해 (날짜+최초명단)을 시드로 고정
         random.seed(today_date_str + roster_str)
         
         prev_teams = {}
@@ -385,7 +384,7 @@ if page == menu_1:
         for p_name, t_name in assigned_dict.items():
             st.session_state[f"sel_{p_name}"] = t_name
             
-        random.seed() # 다음 동작을 위해 시드 리셋
+        random.seed()
         st.rerun()
 
     if btn_fill_new:
