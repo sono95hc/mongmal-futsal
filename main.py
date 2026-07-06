@@ -83,6 +83,7 @@ def load_permanent_data():
             "조현우": {"공격": 1.0, "수비": 2.0, "키퍼": 5.0, "MMR": 1000}
         },
         "attendance_list": ["손흥민", "이강인", "황희찬", "김민재", "조현우"],
+        "late_list": [],
         "match_mode": "3파전",
         "score_data_dict": get_blank_score_df("3파전").to_dict(orient="list"),
         "history_logs": [],
@@ -103,6 +104,7 @@ def load_permanent_data():
                         data["MEMBER_DATABASE"][p_name]["MMR"] = 1000
                         
                 if "attendance_list" not in data: data["attendance_list"] = default_data["attendance_list"]
+                if "late_list" not in data: data["late_list"] = default_data["late_list"]
                 if "match_mode" not in data: data["match_mode"] = "3파전"
                 if "score_data_dict" not in data: data["score_data_dict"] = default_data["score_data_dict"]
                 if "history_logs" not in data: data["history_logs"] = []
@@ -128,9 +130,13 @@ def save_permanent_data():
     att_list = st.session_state.get("attendance_list", [])
     clean_attendance = [str(x).strip() for x in att_list if x and str(x).strip()]
     
+    late_list = st.session_state.get("late_list", [])
+    clean_late = [str(x).strip() for x in late_list if x and str(x).strip()]
+    
     data_to_save = {
         "MEMBER_DATABASE": st.session_state.get("MEMBER_DATABASE", {}),
         "attendance_list": clean_attendance,
+        "late_list": clean_late,
         "match_mode": st.session_state.get("match_mode", "3파전"),
         "score_data_dict": score_dict,
         "history_logs": st.session_state.get("history_logs", []),
@@ -152,6 +158,7 @@ perm_data = load_permanent_data()
 
 if "MEMBER_DATABASE" not in st.session_state: st.session_state.MEMBER_DATABASE = perm_data.get("MEMBER_DATABASE", {})
 if "attendance_list" not in st.session_state: st.session_state.attendance_list = [str(x).strip() for x in perm_data.get("attendance_list", []) if x and str(x).strip()]
+if "late_list" not in st.session_state: st.session_state.late_list = [str(x).strip() for x in perm_data.get("late_list", []) if x and str(x).strip()]
 if "match_mode" not in st.session_state: st.session_state.match_mode = perm_data.get("match_mode", "3파전")
 if "history_logs" not in st.session_state: st.session_state.history_logs = perm_data.get("history_logs", [])
 if "current_teams" not in st.session_state: st.session_state.current_teams = perm_data.get("current_teams", {})
@@ -248,11 +255,13 @@ st.sidebar.caption("제작자: by홍찬")
 if page == menu_1:
     st.title("몽말 팀배분 프로그램")
     
-    st.subheader("[1단계] 참석자 입력")
-    st.write("오늘 참석한 선수들의 이름을 띄어쓰기로 구분하여 적어주세요.")
+    st.subheader("[1단계] 참석자 및 추가 인원 입력")
     
     current_att_str = " ".join([x for x in st.session_state.attendance_list if x])
-    att_input = st.text_area("명단 입력 (예: 손흥민 이강인 황희찬)", value=current_att_str, height=100)
+    att_input = st.text_area("최초 참석자 명단 (AI 밸런스 자동 매칭용)", value=current_att_str, height=80)
+    
+    current_late_str = " ".join([x for x in st.session_state.late_list if x])
+    late_input = st.text_area("추가 인원 명단 (블랙 ? 레드 ? 블루 순차 배정용)", value=current_late_str, height=60, placeholder="지각생 등 추가 참석자 입력")
     
     raw_att_list = [x.strip() for x in att_input.split() if x.strip()]
     current_att_list = []
@@ -260,9 +269,18 @@ if page == menu_1:
         if x not in current_att_list:
             current_att_list.append(x)
             
-    if current_att_list != st.session_state.attendance_list:
+    raw_late_list = [x.strip() for x in late_input.split() if x.strip()]
+    current_late_list = []
+    for x in raw_late_list:
+        if x not in current_att_list and x not in current_late_list:
+            current_late_list.append(x)
+            
+    if current_att_list != st.session_state.attendance_list or current_late_list != st.session_state.late_list:
         st.session_state.attendance_list = current_att_list
+        st.session_state.late_list = current_late_list
         save_permanent_data()
+        
+    total_att_list = current_att_list + current_late_list
         
     st.markdown("---")
     st.subheader("[2단계] 경기 방식 설정")
@@ -272,20 +290,20 @@ if page == menu_1:
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
     st.write("상황에 맞게 아래 버튼을 선택하여 팀을 배분하세요.")
-    st.caption("[안내] 꼼수 방지를 위해 명단이 바뀌지 않는 한 하루 동안 항상 같은 AI 결과가 나옵니다.")
+    st.caption("[안내] 꼼수 방지를 위해 '최초 참석자' 명단이 바뀌지 않는 한 하루 동안 항상 같은 밸런스 결과가 나옵니다.")
     
     col_ai1, col_ai2 = st.columns(2)
     
     with col_ai1:
-        btn_full_ai = st.button("전원 AI 매칭 (새로 짜기)", use_container_width=True)
+        btn_full_ai = st.button("최초 참석자 AI 매칭 (새로 짜기)", use_container_width=True)
     with col_ai2:
-        btn_fill_new = st.button("새 멤버만 빈자리 채우기", use_container_width=True)
+        btn_fill_new = st.button("추가 인원 순차 배정 (블랙>레드>블루)", use_container_width=True)
     
     if btn_full_ai:
         now_kst = datetime.utcnow() + timedelta(hours=9)
         today_date_str = now_kst.strftime("%Y-%m-%d")
         roster_str = "".join(sorted(current_att_list))
-        # 무한 새로고침 꼼수 방지를 위해 (날짜+명단)을 시드로 고정
+        # 무한 새로고침 꼼수 방지를 위해 (날짜+최초명단)을 시드로 고정
         random.seed(today_date_str + roster_str)
         
         prev_teams = {}
@@ -373,35 +391,17 @@ if page == menu_1:
     if btn_fill_new:
         fill_order = ["블랙", "레드", "블루"] if "3파전" in selected_mode else ["레드", "블루"]
         
-        pre_assigned = {}
-        unassigned = []
-        for p in current_att_list:
-            sel = st.session_state.get(f"sel_{p}", "미배정")
-            if sel in fill_order:
-                pre_assigned[p] = sel
-            else:
-                unassigned.append(p)
-                
-        if unassigned:
-            team_counts = {t: list(pre_assigned.values()).count(t) for t in fill_order}
-            for u in unassigned:
-                min_count = min(team_counts.values())
-                candidates = [t for t in fill_order if team_counts[t] == min_count]
-                chosen = candidates[0] 
-                
-                pre_assigned[u] = chosen
-                team_counts[chosen] += 1
-                
-            st.session_state.ai_teams = pre_assigned
-            for p, t in pre_assigned.items():
-                st.session_state[f"sel_{p}"] = t
-                
-            st.rerun()
+        for idx, p in enumerate(current_late_list):
+            target_team = fill_order[idx % len(fill_order)]
+            st.session_state.ai_teams[p] = target_team
+            st.session_state[f"sel_{p}"] = target_team
+            
+        st.rerun()
 
     final_team_selections = {}
-    if current_att_list:
+    if total_att_list:
         cols = st.columns(2)
-        for idx, player_name in enumerate(current_att_list):
+        for idx, player_name in enumerate(total_att_list):
             col = cols[idx % 2]
             
             default_team = st.session_state.ai_teams.get(player_name, "미배정")
