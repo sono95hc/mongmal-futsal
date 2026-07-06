@@ -180,7 +180,6 @@ if "bulk_input_df" not in st.session_state:
 if "show_warning" not in st.session_state: st.session_state.show_warning = False
 if "confirm_close" not in st.session_state: st.session_state.confirm_close = False
 
-# [어워즈 시상대 HTML 생성 함수] 
 def make_podium_html(title, data_list, unit=""):
     while len(data_list) < 3:
         data_list.append(("-", "-"))
@@ -273,7 +272,7 @@ if page == menu_1:
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
     st.write("상황에 맞게 아래 버튼을 선택하여 팀을 배분하세요.")
-    st.caption("[안내] 명단이 바뀌지 않는 한 하루 동안 같은 AI 결과가 나옵니다.")
+    st.caption("[안내] 꼼수 방지를 위해 명단이 바뀌지 않는 한 하루 동안 항상 같은 AI 결과가 나옵니다.")
     
     col_ai1, col_ai2 = st.columns(2)
     
@@ -286,6 +285,7 @@ if page == menu_1:
         now_kst = datetime.utcnow() + timedelta(hours=9)
         today_date_str = now_kst.strftime("%Y-%m-%d")
         roster_str = "".join(sorted(current_att_list))
+        # 무한 새로고침 꼼수 방지를 위해 (날짜+명단)을 시드로 고정
         random.seed(today_date_str + roster_str)
         
         prev_teams = {}
@@ -367,11 +367,11 @@ if page == menu_1:
         for p_name, t_name in assigned_dict.items():
             st.session_state[f"sel_{p_name}"] = t_name
             
-        random.seed()
+        random.seed() # 다음 동작을 위해 시드 리셋
         st.rerun()
 
     if btn_fill_new:
-        fill_order = ["레드", "블루", "블랙"] if "3파전" in selected_mode else ["레드", "블루"]
+        fill_order = ["블랙", "레드", "블루"] if "3파전" in selected_mode else ["레드", "블루"]
         
         pre_assigned = {}
         unassigned = []
