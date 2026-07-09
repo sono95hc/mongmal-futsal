@@ -175,7 +175,7 @@
     "match_mode": "2파전",
     "score_data_dict": {
         "블루": [
-            null,
+            2,
             null,
             null,
             null,
@@ -185,7 +185,7 @@
             null
         ],
         "레드": [
-            null,
+            2,
             null,
             null,
             null,
@@ -541,6 +541,6 @@
             }
         ]
     },
-    "current_q_idx": 0,
+    "current_q_idx": 1,
     "settlement_katalk_text": ""
 }
