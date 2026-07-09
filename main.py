@@ -305,7 +305,6 @@ if page == menu_1:
         now_kst = datetime.utcnow() + timedelta(hours=9)
         today_date_str = now_kst.strftime("%Y-%m-%d")
         roster_str = "".join(sorted(current_att_list))
-        # 날짜 + 명단 + '팀 섞기 번호'를 합쳐서 시드 고정. 번호를 바꾸면 새롭게 리롤 가능!
         random.seed(today_date_str + roster_str + str(match_seed))
         
         prev_teams = {}
@@ -366,7 +365,8 @@ if page == menu_1:
                     for existing_p in new_teams[t]:
                         m1, m2 = p["name"], existing_p["name"]
                         if m1 in prev_teams and m2 in prev_teams and prev_teams[m1] == prev_teams[m2]:
-                            same_team_penalty += 20.0
+                            # 팀 찢기 페널티를 대폭 낮춰서 밸런스를 최우선으로 고려하도록 수정
+                            same_team_penalty += 1.0
                             
                 # 6대6 기준 실제 필드 전투력 (평균 점수 * 6)으로 환산하여 분산 계산
                 temp_team_expected = {}
@@ -377,7 +377,8 @@ if page == menu_1:
                         temp_team_expected[t] = 0
                         
                 avg_expected = sum(temp_team_expected.values()) / len(teams_keys)
-                variance = sum((s - avg_expected)**2 for s in temp_team_expected.values())
+                # 밸런스 가중치를 대폭 상향
+                variance = sum((s - avg_expected)**2 for s in temp_team_expected.values()) * 100.0
                 
                 cost = same_team_penalty + variance
                 if cost < min_cost:
