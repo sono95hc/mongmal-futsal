@@ -355,16 +355,26 @@ if page == menu_1:
             for perm in perms:
                 same_team_penalty = 0
                 temp_team_sums = {t: team_sums[t] for t in teams_keys}
+                temp_team_counts = {t: len(new_teams[t]) for t in teams_keys}
                 
                 for p, t in zip(chunk, perm):
                     temp_team_sums[t] += p["total"]
+                    temp_team_counts[t] += 1
                     for existing_p in new_teams[t]:
                         m1, m2 = p["name"], existing_p["name"]
                         if m1 in prev_teams and m2 in prev_teams and prev_teams[m1] == prev_teams[m2]:
                             same_team_penalty += 20.0
                             
-                avg_sum = sum(temp_team_sums.values()) / len(teams_keys)
-                variance = sum((s - avg_sum)**2 for s in temp_team_sums.values())
+                # 6대6 기준 실제 필드 전투력 (평균 점수 * 6)으로 환산하여 분산 계산
+                temp_team_expected = {}
+                for t in teams_keys:
+                    if temp_team_counts[t] > 0:
+                        temp_team_expected[t] = (temp_team_sums[t] / temp_team_counts[t]) * 6
+                    else:
+                        temp_team_expected[t] = 0
+                        
+                avg_expected = sum(temp_team_expected.values()) / len(teams_keys)
+                variance = sum((s - avg_expected)**2 for s in temp_team_expected.values())
                 
                 cost = same_team_penalty + variance
                 if cost < min_cost:
@@ -809,7 +819,7 @@ elif page == menu_4:
         fine_sorted = sorted(valid_players.items(), key=lambda x: (x[1]['total_fine'], x[1]['MP']), reverse=True)
         fine_top3 = [(k, v['total_fine']) for k, v in fine_sorted[:3] if v['total_fine'] > 0]
         
-        st.markdown("### [ 몽말 명예의 전당 ]")
+        st.markdown("### [ 몽말 명예 전당 ]")
         st.markdown("---")
         
         c1, c2 = st.columns(2)
