@@ -290,7 +290,9 @@ if page == menu_1:
     st.markdown("---")
     st.subheader("[3단계] 팀 편성 (자동+수동 조합)")
     st.write("상황에 맞게 아래 버튼을 선택하여 팀을 배분하세요.")
-    st.caption("[안내] 꼼수 방지를 위해 '최초 참석자' 명단이 바뀌지 않는 한 하루 동안 항상 같은 밸런스 결과가 나옵니다.")
+    st.caption("[안내] 꼼수 방지를 위해 명단이 같으면 기본적으로 같은 결과가 나옵니다. 팀 밸런스가 아쉬워서 다른 팀 배정을 원하시면 아래 '팀 섞기 번호'를 올려주세요.")
+    
+    match_seed = st.number_input("팀 섞기 번호 (번호를 바꾸면 새로운 팀 조합이 나옵니다)", min_value=1, value=1, step=1)
     
     col_ai1, col_ai2 = st.columns(2)
     
@@ -303,7 +305,8 @@ if page == menu_1:
         now_kst = datetime.utcnow() + timedelta(hours=9)
         today_date_str = now_kst.strftime("%Y-%m-%d")
         roster_str = "".join(sorted(current_att_list))
-        random.seed(today_date_str + roster_str)
+        # 날짜 + 명단 + '팀 섞기 번호'를 합쳐서 시드 고정. 번호를 바꾸면 새롭게 리롤 가능!
+        random.seed(today_date_str + roster_str + str(match_seed))
         
         prev_teams = {}
         if st.session_state.history_logs:
